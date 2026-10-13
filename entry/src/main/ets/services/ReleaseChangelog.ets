@@ -20,6 +20,30 @@ export interface ReleaseChangelogDefinition {
 
 export const RELEASE_CHANGELOG_ENTRIES: ReleaseChangelogDefinition[] = [
   {
+    versionName: '1.1.1-dev',
+    versionCode: 100000004,
+    releaseDateZh: '2026年10月13日（开发测试版）',
+    releaseDateEn: 'October 13, 2026 (development test build)',
+    changesZh: [
+      '设置子页保留自选背景与悬浮卡片，恢复滚动底部留白，移除背景选择页图片预览',
+      '可选模拟保活模式与桌面状态栏入口：仅保留下载和低音量本地长音频；模拟下载不传输文件，系统仍可能回收应用',
+      '托盘注册成功时，标题栏关闭默认最小化，不主动停止连接',
+      '新增用户态 SOCKS 127.0.0.1:1055 与 ClashBox 规则复制入口，不创建第二个系统 VPN；共存、DNS、UDP 与子网流量仍需真机验证',
+      '新增底栏 FRP 运行和 FRP 配置两页、frpc 客户端、TOML 导入/文本编辑与 TCP/UDP 可视配置、独立启停和后台任务；公网映射尚未验收',
+      '连接操作增加超时与后端失效恢复，桌面弹层避免自动分栏导致的裁切',
+      '反馈邮箱更新为 smartwolf@stu.xidian.edu.cn；Tailscale 内核仍为 1.86.5'
+    ],
+    changesEn: [
+      'Preserve custom backgrounds and floating cards in settings, restore scroll clearance, and remove the background image preview',
+      'Added optional simulated keepalive modes and a desktop status-bar entry: download and quiet local audio only; simulated downloads transfer no files and reclamation remains possible',
+      'Minimize title-bar close requests when the desktop tray is registered, without intentionally stopping connections',
+      'Add a userspace SOCKS listener on 127.0.0.1:1055 and ClashBox rule snippets without a second system VPN; coexistence, DNS, UDP and subnet traffic remain unverified on device',
+      'Add FRP runtime and configuration tabs, an embedded frpc client, TOML import/text and TCP/UDP form editing, independent lifecycle and background tasks; public port mapping remains unverified',
+      'Bound connection operations, recover stale backend state, and prevent unintended split layouts in desktop sheets',
+      'Use smartwolf@stu.xidian.edu.cn for feedback; the Tailscale core remains 1.86.5'
+    ]
+  },
+  {
     versionName: '1.1.0',
     versionCode: 100000003,
     releaseDateZh: '2026年9月23日',

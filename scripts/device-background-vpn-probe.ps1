@@ -20,7 +20,7 @@ if (-not $DeviceId) {
   if ($targets.Count -ne 1) { throw 'Specify DeviceId when exactly one USB device is not connected.' }
   $DeviceId = ($targets[0] -split "`t")[0]
 }
-$bundleName = 'io.github.tailscaleohos'
+$bundleName = 'io.github.rockymtnwolf.mesharc'
 $filesDir = "/data/app/el2/$AppUserId/base/$bundleName/haps/entry/files"
 if (-not $ArtifactDir) {
   $ArtifactDir = Join-Path $projectRoot ('.codex/background-vpn/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

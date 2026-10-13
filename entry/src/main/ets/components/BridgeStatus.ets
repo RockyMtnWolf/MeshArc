@@ -1,4 +1,8 @@
 import nativeBridge from 'libtailscale_ohos.so';
+import { BackgroundKeepaliveSettings } from './BackgroundKeepaliveSettings';
+import { ClashCoexistenceSettings } from './ClashCoexistenceSettings';
+import { FrpProfilesPage } from './FrpProfilesPage';
+import { CoreUpdateSettings } from './CoreUpdateSettings';
 import { bundleManager, common, CompletionHandlerForAbilityStartCallback, Want } from '@kit.AbilityKit';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
@@ -69,7 +73,6 @@ import { ConnectionDetailsSheet } from './ConnectionDetailsSheet';
 import { MotionTokens } from './MotionTokens';
 import { DeviceDetailSheet } from './DeviceDetailSheet';
 import { NativeSettingsNavigation } from './NativeSettingsNavigation';
-import { UpdateChangelogEntry, UpdateChangelogSheet } from './UpdateChangelogSheet';
 import { HomeConnectionSection } from './HomeConnectionSection';
 import { LegacyConnectedHomeHeader } from './LegacyConnectedHomeHeader';
 import { ConnectedHomeLayoutMode, DEFAULT_CONNECTED_HOME_LAYOUT } from './HomeLayoutConfig';
@@ -106,10 +109,6 @@ import {
 } from '../services/SettingsPreferencesGateway';
 import { DiagnosticPrivacy } from '../services/DiagnosticPrivacy';
 import { RecoverableCachePaths } from '../services/RecoverableCachePaths';
-import {
-  ReleaseChangelogDefinition,
-  RELEASE_CHANGELOG_ENTRIES
-} from '../services/ReleaseChangelog';
 import {
   DEFAULT_NAVIGATION_BOTTOM_MARGIN,
   DEFAULT_NAVIGATION_HIDDEN,
@@ -149,7 +148,6 @@ const OFFLINE_PEER_STATUS_REFRESH_INTERVAL_MS: number = 10000;
 const NORMAL_SERVICE_REFRESH_INTERVAL_MS: number = 30000;
 // Native refresh has a 15-second budget; allow its following peer snapshot
 // to finish before a later UI refresh can replace the command/response files.
-const LOCAL_SEND_REFRESH_TIMEOUT_MS: number = 25000;
 const STATUS_CROSS_FADE_MS: number = 180;
 const LOCAL_SEND_APP_TARGETS: LocalSendAppTarget[] = [
   {
@@ -160,10 +158,10 @@ const LOCAL_SEND_APP_TARGETS: LocalSendAppTarget[] = [
 ];
 const VPN_STOP_POLL_INTERVAL_MS: number = 50;
 const VPN_STOP_POLL_MAX_ATTEMPTS: number = 150;
+const VPN_EXTENSION_STOP_TIMEOUT_MS: number = 7500;
+const VPN_CONNECT_TIMEOUT_MS: number = 90000;
 const VPN_BACKEND_HANDOFF_REQUEST_FILE_NAME: string = 'vpn-backend-handoff-request.json';
 const VPN_BACKEND_HANDOFF_RESPONSE_FILE_NAME: string = 'vpn-backend-handoff-response.json';
-const LOCAL_SEND_REFRESH_REQUEST_FILE_NAME: string = 'localsend-refresh-request.json';
-const LOCAL_SEND_REFRESH_RESPONSE_FILE_NAME: string = 'localsend-refresh-response.json';
 const TAILDROP_SEND_REQUEST_FILE_NAME: string = 'taildrop-send-request.json';
 const TAILDROP_TARGETS_FILE_NAME: string = 'taildrop-targets.json';
 const TAILDROP_CANCEL_REQUEST_FILE_NAME: string = 'taildrop-cancel-request.json';
@@ -205,11 +203,18 @@ const VPN_STOP_REQUEST_FILE_NAME: string = 'vpn-stop-request.json';
 const VPN_STOP_RESPONSE_FILE_NAME: string = 'vpn-stop-response.json';
 const VPN_CONNECT_CONFIG_FILE_NAME: string = 'vpn-connect-config.json';
 const WELCOME_ACKNOWLEDGED_FILE_NAME: string = 'welcome-acknowledged';
-const UPDATE_CHANGELOG_SEEN_FILE_NAME: string = 'update-changelog-seen-version';
-const UPDATE_CHANGELOG_MARKER_PREFIX: string = 'only-on-update:';
+const USERSPACE_MODE_STATUS_SYNC_INTERVAL_MS: number = 3000;
+const LOCAL_SEND_REFRESH_TIMEOUT_MS: number = 25000;
+const LOCAL_SEND_REFRESH_REQUEST_FILE_NAME: string = 'localsend-refresh-request.json';
+const LOCAL_SEND_REFRESH_RESPONSE_FILE_NAME: string = 'localsend-refresh-response.json';
+
+interface LocalSendRefreshResponse {
+  requestId: number;
+  status: string;
+}
 const DEFAULT_APP_VERSION_NAME: string = '0.9.10';
 const DEFAULT_APP_VERSION_CODE: number = 99000003;
-const FEEDBACK_EMAIL: string = 'zzx15821178583@gmail.com';
+const FEEDBACK_EMAIL: string = 'smartwolf@stu.xidian.edu.cn';
 
 interface ExitNodeChoice {
   id: string;
@@ -282,11 +287,6 @@ class SecureLoginAbilityStartCallback {
 }
 
 interface VpnBackendHandoffResponse {
-  requestId: number;
-  status: string;
-}
-
-interface LocalSendRefreshResponse {
   requestId: number;
   status: string;
 }
@@ -517,6 +517,7 @@ export struct BridgeStatus {
   @State loginHandoffStatus: string = 'Secure Login Pending';
   @State controlProbeStatus: string = 'Control TLS Probe Pending';
   @State vpnStatus: string = 'HarmonyOS VPN Extension Stopped';
+  @StorageLink('clashUserspaceActive') clashUserspaceActive: boolean = false;
   @State exitNodes: ExitNodeChoice[] = [];
   @State peers: PeerSummary[] = [];
   @State networkSettings: NetworkSettings = {
@@ -613,6 +614,7 @@ export struct BridgeStatus {
   @State devicesLoading: boolean = true;
   @State hasAuthenticatedSession: boolean = false;
   @State currentTab: number = 0;
+  @State frpEditorVisible: boolean = false;
   @State activeTab: number = 0;
   @State navigationOrder: NavigationTabId[] = [...DEFAULT_NAVIGATION_ORDER];
   @State hiddenNavigationTabs: NavigationTabId[] = [...DEFAULT_NAVIGATION_HIDDEN];
@@ -643,7 +645,7 @@ export struct BridgeStatus {
   @State folderLockEnabled: boolean = false;
   @State securityPreferencesReady: boolean = false;
   @StorageLink('taildriveLockedFolderPaths') lockedFolderPaths: string[] = [];
-  @State @Watch('onAppLockRequiredChanged') appLockRequired: boolean = false;
+  @State appLockRequired: boolean = false;
   @State appLockAuthenticating: boolean = false;
   @State securitySettingsAuthenticating: boolean = false;
   @State appLockMessage: string = '';
@@ -661,8 +663,6 @@ export struct BridgeStatus {
   @State cacheClearInProgress: boolean = false;
   @State @Watch('onConnectionDetailsVisibilityChanged') connectionDetailsVisible: boolean = false;
   @State deviceDetailVisible: boolean = false;
-  @State updateChangelogVisible: boolean = false;
-  @StorageLink('updateChangelogAction') @Watch('onUpdateChangelogActionRequested') updateChangelogAction: string = '';
   @State homeTitleCompact: boolean = false;
   @State layoutWidth: number = 360;
   @State layoutHeight: number = 640;
@@ -699,6 +699,8 @@ export struct BridgeStatus {
   private homeLatencyRefreshTimer: number = -1;
   private offlinePeerStatusRefreshTimer: number = -1;
   private homeLatencyRefreshInFlight: boolean = false;
+  private userspaceModeStatusSyncInFlight: boolean = false;
+  private lastUserspaceModeStatusSyncAtMs: number = 0;
   private deviceDetailRefreshTimer: number = -1;
   private transferProtocolRefreshTimer: number = -1;
   private transferProtocolRefreshInFlight: boolean = false;
@@ -706,6 +708,7 @@ export struct BridgeStatus {
   private loginPollTimer: number = -1;
   private homeScroller: Scroller = new Scroller();
   private transferScroller: Scroller = new Scroller();
+  private frpScroller: Scroller = new Scroller();
   private filesScroller: Scroller = new Scroller();
   private transferScrollAnchorY: number = 0;
   private transferScrollRestoreTimer: number = -1;
@@ -774,8 +777,6 @@ export struct BridgeStatus {
   private exitNodeLanUpdatePromise: Promise<void> | undefined = undefined;
   private vpnConflictDialogVisible: boolean = false;
   private welcomeDialogVisible: boolean = false;
-  private appVersionMetadataReady: boolean = false;
-  private updateChangelogShowPending: boolean = false;
   private trafficSession: number = 0;
   private trafficLastHeartbeatMs: number = 0;
   private trafficLastDownloadBytes: number = 0;
@@ -823,7 +824,7 @@ export struct BridgeStatus {
   private peerServiceRefreshInFlight: Set<string> = new Set();
   private autoSunshineFailureCounts: Map<string, number> = new Map();
   private autoMediaFailureCounts: Map<string, number> = new Map();
-  private autoProbedPeerSessions: Map<string, number> = new Map();
+  private autoProbedPeerSessions: Map<string, string> = new Map();
   private appForegroundListener: () => void = () => this.handleAppForeground();
 
   private mergePeerLocalSend(incoming: PeerSummary, current: PeerSummary | undefined): PeerSummary {
@@ -937,8 +938,6 @@ export struct BridgeStatus {
     this.selectedPeerTitleSystem = '';
     this.selectedPeerTitleOnline = false;
     this.securityPreferencesReady = false;
-    this.updateChangelogVisible = false;
-    this.updateChangelogShowPending = false;
     this.homeReadOnlyRequestGuard.invalidate();
     this.accountRequestGuard.invalidate();
     this.diagnosticProbeRequestGuard.invalidate();
@@ -973,7 +972,6 @@ export struct BridgeStatus {
     this.loadTaildropHistory();
     this.loadPersistedTaildropInbox();
     this.maybeExpireTaildropCache();
-    this.scheduleLifecycleTask(() => this.showUpdateChangelogIfNeeded(), 350);
     this.scheduleLifecycleTask(() => this.showWelcomeDialogIfNeeded(), 350);
     this.recordDiagnosticEvent('ui_opened', 'lifecycle');
     const vpnIsLive: boolean = this.refreshVpnProbeStatus();
@@ -996,6 +994,7 @@ export struct BridgeStatus {
       this.backendInitializationVisible = false;
       this.devicesLoading = false;
       this.hasAuthenticatedSession = true;
+      this.refreshBackendStatus();
     }
     // Recheck after the heartbeat freshness window. This covers an extension
     // process that was killed just before the UI appeared (for example during
@@ -1006,6 +1005,7 @@ export struct BridgeStatus {
       }
     }, 6000);
     this.startHealthPolling();
+    this.refreshUserspaceModeFromNative();
     this.startServiceRefreshPolling();
     this.syncHomeLatencyRefreshPolling();
     this.syncTransferProtocolRefreshPolling();
@@ -1036,8 +1036,6 @@ export struct BridgeStatus {
     this.fileTransferMethodVisible = false;
     this.mediaMethodVisible = false;
     this.remotePortEditorVisible = false;
-    this.updateChangelogVisible = false;
-    this.updateChangelogShowPending = false;
     this.stopConnectionPolling();
     this.stopConnectionDurationPolling();
     this.clearConnectionCompletionTimer();
@@ -1109,116 +1107,12 @@ export struct BridgeStatus {
   }
 
   private loadAppVersion(): void {
-    this.appVersionMetadataReady = false;
     bundleManager.getBundleInfoForSelf(bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION)
       .then((info: bundleManager.BundleInfo) => {
         this.appVersion = info.versionName;
         this.appVersionCode = info.versionCode;
-        this.appVersionMetadataReady = true;
-        if (this.appShellReady && this.updateChangelogShowPending) {
-          this.showUpdateChangelogIfNeeded();
-        }
       })
-      .catch(() => {
-        this.appVersionMetadataReady = true;
-        if (this.appShellReady && this.updateChangelogShowPending) {
-          this.showUpdateChangelogIfNeeded();
-        }
-      });
-  }
-
-  private updateChangelogVersionKey(): string {
-    return `${this.appVersion}:${this.appVersionCode}`;
-  }
-
-  private updateChangelogSeenMarker(versionKey: string): string {
-    return `${UPDATE_CHANGELOG_MARKER_PREFIX}${versionKey}`;
-  }
-
-  private updateChangelogSeenPath(): string {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    return `${context.filesDir}/${UPDATE_CHANGELOG_SEEN_FILE_NAME}`;
-  }
-
-  private showUpdateChangelogIfNeeded(): void {
-    this.updateChangelogShowPending = true;
-    if (!this.appShellReady || !this.appVersionMetadataReady || !this.securityPreferencesReady ||
-      this.appLockRequired || this.appLockAuthenticating ||
-      this.updateChangelogVisible || this.welcomeDialogVisible) {
-      return;
-    }
-    const versionKey: string = this.updateChangelogVersionKey();
-    try {
-      const path: string = this.updateChangelogSeenPath();
-      // The prefixed marker intentionally invalidates the legacy raw-version
-      // marker written by the former "Don't show again" action.
-      if (fileIo.accessSync(path) &&
-        fileIo.readTextSync(path).trim() === this.updateChangelogSeenMarker(versionKey)) {
-        this.updateChangelogShowPending = false;
-        return;
-      }
-    } catch (_error) {
-      // A missing or unreadable marker is treated as unseen so the release
-      // notes are not silently skipped after an application update.
-    }
-    this.updateChangelogShowPending = false;
-    this.updateChangelogVisible = true;
-    this.recordDiagnosticEvent('update_changelog_shown', 'lifecycle');
-  }
-
-  private dismissUpdateChangelog(onlyOnUpdate: boolean): void {
-    const versionKey: string = this.updateChangelogVersionKey();
-    if (onlyOnUpdate) {
-      this.writePrivateTextFile(this.updateChangelogSeenPath(), this.updateChangelogSeenMarker(versionKey));
-      this.recordDiagnosticEvent('update_changelog_only_on_update', 'lifecycle');
-    } else {
-      this.recordDiagnosticEvent('update_changelog_dismissed', 'lifecycle');
-    }
-    this.updateChangelogShowPending = false;
-    this.updateChangelogVisible = false;
-  }
-
-  private onUpdateChangelogSheetDisappear(): void {
-    if (this.updateChangelogVisible) {
-      this.dismissUpdateChangelog(false);
-    }
-    // The native bindSheet has completed its dismiss animation at this point;
-    // only now may the first-run guide claim focus.
-    this.scheduleLifecycleTask(() => this.showWelcomeDialogIfNeeded(), 120);
-  }
-
-  private onUpdateChangelogActionRequested(): void {
-    const action: string = this.updateChangelogAction;
-    if (action.length === 0) {
-      return;
-    }
-    this.updateChangelogAction = '';
-    this.dismissUpdateChangelog(action === 'only_on_update');
-  }
-
-  private isChineseChangelogLocale(): boolean {
-    try {
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const locale: string = context.resourceManager.getConfigurationSync().locale;
-      return locale.startsWith('zh');
-    } catch (_error) {
-      return false;
-    }
-  }
-
-  private updateChangelogEntries(): UpdateChangelogEntry[] {
-    const useChinese: boolean = this.isChineseChangelogLocale();
-    return RELEASE_CHANGELOG_ENTRIES.map((entry: ReleaseChangelogDefinition,
-      index: number): UpdateChangelogEntry => ({
-      // BundleInfo remains the source of truth for what is installed. The
-      // Release build gate ensures the first changelog item matches it.
-      versionName: index === 0 ? this.appVersion : entry.versionName,
-      versionCode: index === 0 ? this.appVersionCode : entry.versionCode,
-      releaseDate: useChinese ? entry.releaseDateZh : entry.releaseDateEn,
-      changes: useChinese ? entry.changesZh : entry.changesEn,
-      current: index === 0,
-      imageResource: index === 0 ? $r('app.media.mesharc_hosplayer_collab') : undefined
-    }));
+      .catch(() => {});
   }
 
   private loadSettingsPreferences(context: common.UIAbilityContext): void {
@@ -1252,26 +1146,12 @@ export struct BridgeStatus {
       AppStorage.setOrCreate('taildriveLockedFolderPaths', settings.lockedFolderPaths);
       this.securityPreferencesReady = true;
       this.requireAppAuthentication();
-      if (this.updateChangelogShowPending) {
-        this.showUpdateChangelogIfNeeded();
-      }
     }).catch(() => {
       this.appLockEnabled = false;
       this.folderLockEnabled = false;
       AppStorage.setOrCreate('taildriveLockedFolderPaths', []);
       this.securityPreferencesReady = true;
-      if (this.updateChangelogShowPending) {
-        this.showUpdateChangelogIfNeeded();
-      }
     });
-  }
-
-  private onAppLockRequiredChanged(): void {
-    // The update-log sheet renders the same lock surface inside its native
-    // bindSheet, so it remains protected even above the outer content cover.
-    if (!this.appLockRequired && this.appShellReady && this.updateChangelogShowPending) {
-      this.scheduleLifecycleTask(() => this.showUpdateChangelogIfNeeded(), 120);
-    }
   }
 
   private requireAppAuthentication(): void {
@@ -1400,10 +1280,6 @@ export struct BridgeStatus {
     if (this.welcomeDialogVisible) {
       return;
     }
-    if (this.updateChangelogVisible || this.updateChangelogShowPending) {
-      this.scheduleLifecycleTask(() => this.showWelcomeDialogIfNeeded(), 240);
-      return;
-    }
     const markerPath: string = this.welcomeAcknowledgedPath();
     try {
       if (fileIo.accessSync(markerPath)) {
@@ -1423,9 +1299,6 @@ export struct BridgeStatus {
           this.writePrivateTextFile(markerPath, 'acknowledged');
           this.welcomeDialogVisible = false;
           this.recordDiagnosticEvent('welcome_dialog_acknowledged', 'first_run');
-          if (this.updateChangelogShowPending) {
-            this.scheduleLifecycleTask(() => this.showUpdateChangelogIfNeeded(), 120);
-          }
         }
       }
     });
@@ -1526,6 +1399,9 @@ export struct BridgeStatus {
     const selectedId: NavigationTabId = visible.includes(preferredId) ? preferredId : visible[0];
     const selectedIndex: number = visible.indexOf(selectedId);
     this.activeNavigationId = selectedId;
+    if (selectedId !== 'frp') {
+      this.frpEditorVisible = false;
+    }
     this.settingsDetailActive = selectedId === 'settings' && this.settingsPathStack.size() > 0;
     this.activeTab = selectedIndex;
     this.publishFilesTabActive(selectedIndex);
@@ -1546,6 +1422,9 @@ export struct BridgeStatus {
       return;
     }
     this.activeNavigationId = id;
+    if (id !== 'frp') {
+      this.frpEditorVisible = false;
+    }
     if (id === 'settings') {
       // A tab swipe is a navigation to the Settings home, not a restore of
       // the previously open second-level settings destination.
@@ -2251,7 +2130,7 @@ export struct BridgeStatus {
 
   private vpnWant(): Want {
     return {
-      bundleName: 'io.github.tailscaleohos',
+      bundleName: 'io.github.rockymtnwolf.mesharc',
       abilityName: 'TailscaleVpnExtensionAbility'
     };
   }
@@ -2349,9 +2228,20 @@ export struct BridgeStatus {
   }
 
   private beginVpnConnection(): void {
+    if (AppStorage.get<boolean>('clashUserspaceActive') === true) {
+      this.getUIContext().showAlertDialog({
+        title: '正在使用 ClashBox 共存模式',
+        message: '请先在网络设置中关闭用户态 SOCKS，再启动系统 VPN；不会自动停止 ClashBox。',
+        confirm: { value: '知道了', action: () => {} }
+      });
+      return;
+    }
     if (!this.controlServerConfirmed) {
       this.openControlServerSettings();
       return;
+    }
+    if (!this.connectInProgress && !this.disconnectInProgress) {
+      this.refreshVpnProbeStatus();
     }
     if (this.connectInProgress || this.disconnectInProgress || this.isConnecting()) {
       return;
@@ -2361,6 +2251,18 @@ export struct BridgeStatus {
       return;
     }
     this.setConnectInProgress(true);
+    const commandId: number = this.connectCommandId;
+    this.scheduleLifecycleTask(() => {
+      if (!this.vpnCommandStateMachine.isActive(commandId) || !this.connectInProgress) {
+        return;
+      }
+      this.vpnCommandStateMachine.timeout(commandId);
+      this.clearConnectionCompletionTimer();
+      this.stopConnectionPolling();
+      this.setConnectInProgress(false);
+      this.vpnStatus = 'FAILED | VPN connect | timeout';
+      this.recordDiagnosticEvent('vpn_connect_timeout', 'deadline');
+    }, VPN_CONNECT_TIMEOUT_MS);
     void this.beginVpnConnectionAfterExitNodeUpdate();
   }
 
@@ -2383,14 +2285,19 @@ export struct BridgeStatus {
     }
     if (this.exitNodeStatus.startsWith('FAILED')) {
       this.setConnectInProgress(false);
+      this.vpnCommandStateMachine.complete(commandId, VpnCommandState.STOPPED);
       return;
     }
     this.clearConnectionCompletionTimer();
     this.connectionStartedAtMs = Date.now();
     try {
-      this.vpnBackendWasRunningBeforeConnect = this.vpnCommandGateway.backendStatus().includes('state=Running');
+      this.vpnBackendWasRunningBeforeConnect =
+        (await this.vpnCommandGateway.requestBackendStatus()).includes('state=Running');
     } catch (_error) {
       this.vpnBackendWasRunningBeforeConnect = this.backendStatus.includes('state=Running');
+    }
+    if (!this.vpnCommandStateMachine.isActive(commandId)) {
+      return;
     }
     this.recordDiagnosticEvent('connect_requested', 'preflight');
     // Leave one rendering frame for the loading state before native/VPN calls.
@@ -2429,6 +2336,9 @@ export struct BridgeStatus {
       }
       this.requestVpnExtensionStart(commandId);
     } catch (_error) {
+      if (!this.vpnCommandStateMachine.isActive(commandId)) {
+        return;
+      }
       this.recordDiagnosticEvent('vpn_preflight_failed', 'exception');
       this.vpnStatus = 'FAILED | VPN preflight | backend unavailable';
       this.clearConnectionCompletionTimer();
@@ -2569,11 +2479,27 @@ export struct BridgeStatus {
 
   private finishVpnExtensionStop(commandId: number): void {
     this.stopVpnStopPolling();
+    const lifecycleGeneration: number = this.vpnCommandStateMachine.currentLifecycleGeneration();
+    const isCurrentCommand = (): boolean => {
+      return lifecycleGeneration === this.vpnCommandStateMachine.currentLifecycleGeneration() &&
+        (this.vpnCommandStateMachine.isActive(commandId) ||
+          this.vpnCommandStateMachine.isTimedOut(commandId));
+    };
+    const timeoutTimer: number = setTimeout(() => {
+      if (!isCurrentCommand()) {
+        return;
+      }
+      this.recordDiagnosticEvent('vpn_extension_stop_timeout', 'disconnect');
+      this.vpnStatus = 'FAILED | VPN stop | timeout';
+      this.disconnectInProgress = false;
+      this.homeTitleCompact = false;
+      this.vpnCommandStateMachine.complete(commandId, VpnCommandState.STOPPED);
+      this.stopConnectionPolling();
+    }, VPN_EXTENSION_STOP_TIMEOUT_MS);
     this.vpnCommandGateway.stopVpnExtension(this.vpnWant())
       .then(() => {
-        if (!this.vpnCommandStateMachine.isActive(commandId) &&
-          this.vpnCommandStateMachine.currentState() !== VpnCommandState.TIMED_OUT) {
-          this.disconnectInProgress = false;
+        clearTimeout(timeoutTimer);
+        if (!isCurrentCommand()) {
           return;
         }
         this.recordDiagnosticEvent('disconnect_completed', 'system');
@@ -2588,9 +2514,8 @@ export struct BridgeStatus {
         }
       })
       .catch((error: BusinessError) => {
-        if (!this.vpnCommandStateMachine.isActive(commandId) &&
-          this.vpnCommandStateMachine.currentState() !== VpnCommandState.TIMED_OUT) {
-          this.disconnectInProgress = false;
+        clearTimeout(timeoutTimer);
+        if (!isCurrentCommand()) {
           return;
         }
         this.recordDiagnosticEvent('disconnect_failed', 'system', error.code);
@@ -3371,7 +3296,7 @@ export struct BridgeStatus {
         this.commitConnectedStatus(visibleStatus);
         return extensionIsLive;
       }
-      this.vpnStatus = !extensionIsLive && visibleStatus.includes('tun=true') ?
+      this.vpnStatus = !extensionIsLive && !this.connectInProgress && !visibleStatus.startsWith('FAILED') ?
         'HarmonyOS VPN Extension Stopped (previous session ended)' : visibleStatus;
       this.syncHomeTitleCompact(this.connectedHomeLayoutActive());
       if (!visibleStatus.includes('state=Running')) {
@@ -3595,6 +3520,10 @@ export struct BridgeStatus {
   }
 
   private refreshPeerSnapshot(): void {
+    if (this.clashUserspaceActive && !this.isConnected()) {
+      this.refreshBackendStatus();
+      return;
+    }
     try {
       const path: string = this.peerSnapshotFilePath();
       if (!fileIo.accessSync(path)) {
@@ -3864,7 +3793,11 @@ export struct BridgeStatus {
     this.applyTaildropInboxSnapshot(snapshot, false, true);
   }
 
-  private refreshTaildropSnapshot(connected: boolean = this.isConnected()): void {
+  private refreshTaildropSnapshot(connected: boolean = this.meshConnected()): void {
+    if (this.clashUserspaceActive && !this.isConnected()) {
+      this.refreshBackendStatus();
+      return;
+    }
     try {
       this.maybeExpireTaildropCache();
       const path: string = this.taildropSnapshotFilePath();
@@ -3903,8 +3836,10 @@ export struct BridgeStatus {
       if (generation !== this.lifecycleGeneration) {
         return;
       }
+      this.refreshUserspaceModeFromNative();
       const vpnIsLive: boolean = this.refreshVpnProbeStatus();
-      const refresh: Promise<void> = vpnIsLive ? Promise.resolve() : this.refreshOrRecoverBackend(generation);
+      const refresh: Promise<void> = vpnIsLive ? this.refreshBackendStatus() :
+        this.refreshOrRecoverBackend(generation);
       refresh.finally(() => {
         if (generation === this.lifecycleGeneration) {
           this.scheduleHealthPoll(generation);
@@ -3939,6 +3874,27 @@ export struct BridgeStatus {
     }
   }
 
+  private refreshUserspaceModeFromNative(): void {
+    const nowMs: number = Date.now();
+    if (this.userspaceModeStatusSyncInFlight ||
+      nowMs - this.lastUserspaceModeStatusSyncAtMs < USERSPACE_MODE_STATUS_SYNC_INTERVAL_MS) {
+      return;
+    }
+    this.lastUserspaceModeStatusSyncAtMs = nowMs;
+    this.userspaceModeStatusSyncInFlight = true;
+    const generation: number = this.lifecycleGeneration;
+    this.homeReadOnlyGateway.readUserspaceModeActive().then((active: boolean) => {
+      if (generation !== this.lifecycleGeneration) {
+        return;
+      }
+      this.clashUserspaceActive = active;
+      AppStorage.setOrCreate('clashUserspaceActive', active);
+    }).catch(() => {
+    }).finally(() => {
+      this.userspaceModeStatusSyncInFlight = false;
+    });
+  }
+
   private startServiceRefreshPolling(): void {
     this.stopServiceRefreshPolling();
     this.refreshServiceSnapshots();
@@ -3959,7 +3915,7 @@ export struct BridgeStatus {
   }
 
   private syncOfflinePeerStatusRefreshPolling(): void {
-    if (this.appShellReady && this.isConnected() && this.offlinePeers().length > 0) {
+    if (this.appShellReady && this.meshConnected() && this.offlinePeers().length > 0) {
       this.startOfflinePeerStatusRefreshPolling();
     } else {
       this.stopOfflinePeerStatusRefreshPolling();
@@ -3971,7 +3927,7 @@ export struct BridgeStatus {
       return;
     }
     this.offlinePeerStatusRefreshTimer = setInterval(() => {
-      if (!this.appShellReady || !this.isConnected() || this.offlinePeers().length === 0) {
+      if (!this.appShellReady || !this.meshConnected() || this.offlinePeers().length === 0) {
         this.stopOfflinePeerStatusRefreshPolling();
         return;
       }
@@ -3993,7 +3949,7 @@ export struct BridgeStatus {
     this.serviceRefreshInFlight = true;
     const generation: number = this.lifecycleGeneration;
     this.refreshPeerSnapshot();
-    this.refreshTaildropSnapshot(this.isConnected());
+    this.refreshTaildropSnapshot(this.meshConnected());
     const localSendRefresh: Promise<void> = this.requestLocalSendRefresh();
     localSendRefresh.finally(() => {
       if (generation === this.lifecycleGeneration && this.appShellReady) {
@@ -4034,7 +3990,7 @@ export struct BridgeStatus {
 
   private refreshHomeLatency(): void {
     this.refreshPeerSnapshot();
-    if (this.homeLatencyRefreshInFlight || !this.isConnected()) {
+    if (this.homeLatencyRefreshInFlight || !this.meshConnected()) {
       return;
     }
     this.ensureStreamingServices();
@@ -4047,9 +4003,9 @@ export struct BridgeStatus {
     const generation: number = this.lifecycleGeneration;
     const session: number = this.trafficSession;
     Promise.all(onlinePeers.map((peer: PeerSummary) =>
-      this.peerPathService!.probe(peer.key, true, true).then((path: PeerPathResult) => {
+      this.peerPathService!.probe(peer.key, true, true, this.clashUserspaceActive).then((path: PeerPathResult) => {
         const currentPeer: PeerSummary | undefined = this.peers.find((item: PeerSummary) => item.key === peer.key);
-        if (!this.appShellReady || !this.isConnected() || generation !== this.lifecycleGeneration ||
+        if (!this.appShellReady || !this.meshConnected() || generation !== this.lifecycleGeneration ||
           session !== this.trafficSession || currentPeer === undefined || !currentPeer.online ||
           path.errorMessage === 'cancelled') {
           return;
@@ -4108,7 +4064,7 @@ export struct BridgeStatus {
     this.requestLocalSendRefresh().finally(() => {
       if (generation === this.lifecycleGeneration && this.appShellReady) {
         this.refreshPeerSnapshot();
-        if (!this.isConnected()) {
+        if (!this.meshConnected()) {
           this.refreshBackendStatus();
         }
       }
@@ -4126,7 +4082,7 @@ export struct BridgeStatus {
   }
 
   private handleTransferProtocolRefreshClick(): void {
-    if (!this.isConnected()) {
+    if (!this.meshConnected()) {
       this.showToast($r('app.string.transfer_tailscale_network_not_connected'));
       return;
     }
@@ -4150,14 +4106,18 @@ export struct BridgeStatus {
   }
 
   private async performLocalSendRefresh(): Promise<void> {
-    if (!this.isConnected()) {
+    if (!this.meshConnected()) {
+      await this.refreshBackendStatus();
+      return;
+    }
+    if (this.clashUserspaceActive && !this.isConnected()) {
+      await this.homeReadOnlyGateway.refreshLocalSend();
       await this.refreshBackendStatus();
       return;
     }
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const requestId: number = Math.max(Date.now(), this.localSendRefreshRequestId + 1);
     this.localSendRefreshRequestId = requestId;
-    const requestPath: string = `${context.filesDir}/${LOCAL_SEND_REFRESH_REQUEST_FILE_NAME}`;
     const responsePath: string = `${context.filesDir}/${LOCAL_SEND_REFRESH_RESPONSE_FILE_NAME}`;
     this.vpnCommandGateway.writeCommandFile(context.filesDir, LOCAL_SEND_REFRESH_RESPONSE_FILE_NAME, '');
     this.vpnCommandGateway.writeCommandFile(context.filesDir, LOCAL_SEND_REFRESH_REQUEST_FILE_NAME,
@@ -4166,22 +4126,15 @@ export struct BridgeStatus {
     while (Date.now() - startedAt < LOCAL_SEND_REFRESH_TIMEOUT_MS && this.appShellReady && this.isConnected()) {
       await new Promise<void>((resolve: () => void) => setTimeout(resolve, 150));
       try {
-        if (!fileIo.accessSync(responsePath)) {
-          continue;
-        }
-        const responseText: string = fileIo.readTextSync(responsePath).trim();
-        if (responseText.length === 0) {
-          continue;
-        }
-        const response: LocalSendRefreshResponse = JSON.parse(responseText) as LocalSendRefreshResponse;
-        if (response.requestId !== requestId) {
-          continue;
-        }
+        if (!fileIo.accessSync(responsePath)) continue;
+        const text: string = fileIo.readTextSync(responsePath).trim();
+        if (text.length === 0) continue;
+        const response: LocalSendRefreshResponse = JSON.parse(text) as LocalSendRefreshResponse;
+        if (response.requestId !== requestId) continue;
         this.vpnCommandGateway.writeCommandFile(context.filesDir, LOCAL_SEND_REFRESH_RESPONSE_FILE_NAME, '');
         this.refreshPeerSnapshot();
         return;
       } catch (_error) {
-        // The Extension may be replacing the response file. Retry briefly.
       }
     }
     this.vpnCommandGateway.writeCommandFile(context.filesDir, LOCAL_SEND_REFRESH_REQUEST_FILE_NAME, '');
@@ -4189,6 +4142,11 @@ export struct BridgeStatus {
 
   private isConnected(): boolean {
     return this.vpnStatus.includes('state=Running');
+  }
+
+  private meshConnected(): boolean {
+    return this.backendStatus.includes('state=Running') &&
+      (this.isConnected() || this.clashUserspaceActive);
   }
 
   private isConnecting(): boolean {
@@ -4530,13 +4488,13 @@ export struct BridgeStatus {
   }
 
   private taildropTargetReadyForPeer(peer: PeerSummary): boolean {
-    return this.isConnected() && this.taildropState === 'ready' &&
+    return this.meshConnected() && this.taildropState === 'ready' &&
       this.taildropTargetOnlineForPeer(peer);
   }
 
   private localSendAvailableForPeer(peer: PeerSummary): boolean {
     const current: PeerSummary | undefined = this.peers.find((item: PeerSummary) => item.key === peer.key);
-    return this.isConnected() && current !== undefined && this.peerEffectivelyOnline(current) &&
+    return this.meshConnected() && current !== undefined && this.peerEffectivelyOnline(current) &&
       current.localSend?.state === 'available';
   }
 
@@ -4569,7 +4527,7 @@ export struct BridgeStatus {
   }
 
   private localSendCheckingPeerCount(): number {
-    return this.isConnected() ? this.peers.filter((peer: PeerSummary) =>
+    return this.meshConnected() ? this.peers.filter((peer: PeerSummary) =>
       this.peerEffectivelyOnline(peer) && peer.localSend?.state === 'checking').length : 0;
   }
 
@@ -4682,7 +4640,7 @@ export struct BridgeStatus {
   }
 
   private remoteCachedPeers(): PeerSummary[] {
-    if (this.isConnected()) {
+    if (this.meshConnected()) {
       return [];
     }
     return this.peers.filter((peer: PeerSummary) => peer.name.length > 0);
@@ -4710,7 +4668,7 @@ export struct BridgeStatus {
     if (!peer.online) {
       return $r('app.string.peer_offline');
     }
-    if (!this.isConnected()) {
+    if (!this.meshConnected()) {
       return $r('app.string.transfer_remote_waiting_connection');
     }
     if (!this.peerEffectivelyOnline(peer)) {
@@ -4726,7 +4684,7 @@ export struct BridgeStatus {
   }
 
   private remoteCachedPeerIsOffline(peer: PeerSummary): boolean {
-    return !peer.online || (this.isConnected() && !this.peerEffectivelyOnline(peer));
+    return !peer.online;
   }
 
   private remotePortEditorPeer(): PeerSummary | undefined {
@@ -4824,14 +4782,14 @@ export struct BridgeStatus {
   }
 
   private connectionTitle(): ResourceStr {
+    if (this.meshConnected()) {
+      return $r('app.string.connection_connected');
+    }
     if (!this.controlServerConfirmed) {
       return $r('app.string.connection_server_required');
     }
     if (this.isBackendLoading()) {
       return $r('app.string.connection_starting');
-    }
-    if (this.isConnected()) {
-      return $r('app.string.connection_connected');
     }
     if (this.deviceNeedsApproval()) {
       return $r('app.string.connection_approval_required');
@@ -4852,14 +4810,14 @@ export struct BridgeStatus {
   }
 
   private connectionDescription(): ResourceStr {
+    if (this.meshConnected()) {
+      return this.clashUserspaceActive ? '用户态共存模式 · 系统 VPN 未启用' : '系统 VPN 模式';
+    }
     if (!this.controlServerConfirmed) {
       return $r('app.string.description_server_required');
     }
     if (this.isBackendLoading()) {
       return $r('app.string.description_starting');
-    }
-    if (this.isConnected()) {
-      return $r('app.string.description_connected');
     }
     if (this.deviceNeedsApproval()) {
       return $r('app.string.description_approval_required');
@@ -4896,8 +4854,11 @@ export struct BridgeStatus {
   }
 
   private connectionColor(): ResourceColor {
-    if (this.isConnected()) {
+    if (this.meshConnected()) {
       return $r('app.color.status_success');
+    }
+    if (this.clashUserspaceActive) {
+      return $r('app.color.status_warning');
     }
     if (this.isConnecting()) {
       return $r('app.color.status_warning');
@@ -4958,15 +4919,6 @@ export struct BridgeStatus {
     }
     const remainingCount: number = 5 - this.diagnosticsTapCount;
     this.showToast(`再点击${remainingCount}次即可进入工程诊断`);
-  }
-
-  private openUpdateChangelogFromSettings(): void {
-    if (this.updateChangelogVisible || this.appLockRequired || this.appLockAuthenticating) {
-      return;
-    }
-    this.updateChangelogShowPending = false;
-    this.updateChangelogVisible = true;
-    this.recordDiagnosticEvent('update_changelog_opened', 'settings');
   }
 
   private loadGlowLevel(): void {
@@ -5311,7 +5263,7 @@ export struct BridgeStatus {
   }
 
   private localDeviceCardStatus(): ResourceStr {
-    return this.isConnected()
+    return this.meshConnected()
       ? $r('app.string.connection_connected')
       : $r('app.string.connection_disconnected');
   }
@@ -5320,13 +5272,13 @@ export struct BridgeStatus {
     if (!this.peerEffectivelyOnline(peer)) {
       return $r('app.string.peer_offline');
     }
-    if (!this.isConnected()) {
-      return $r('app.string.device_connection_waiting');
-    }
     const state: DeviceStreamingState = this.streamingState(peer.key);
     const path: PeerPathResult = state.path;
-    if (state.checking || path.checkedAt <= 0) {
+    if (state.checking) {
       return $r('app.string.device_connection_connecting');
+    }
+    if (path.checkedAt <= 0) {
+      return $r('app.string.peer_online');
     }
     if (path.type === 'direct') {
       return $r('app.string.device_path_direct', path.latencyMs ?? 0);
@@ -5334,17 +5286,13 @@ export struct BridgeStatus {
     if (path.type === 'peerRelay' || path.type === 'derp') {
       return $r('app.string.device_path_relay', path.latencyMs ?? 0);
     }
-    if (path.type === 'unreachable' || (path.errorMessage !== undefined &&
-      path.errorMessage.length > 0)) {
-      return $r('app.string.connection_recovering');
-    }
-    return $r('app.string.device_connection_connecting');
+    return $r('app.string.peer_online');
   }
 
   private peerCardStatusKey(peer: PeerSummary): string {
     const state: DeviceStreamingState = this.streamingState(peer.key);
     const path: PeerPathResult = state.path;
-    return `${this.isConnected()}|${this.peerEffectivelyOnline(peer)}|${state.checking}|` +
+    return `${this.meshConnected()}|${this.peerEffectivelyOnline(peer)}|${state.checking}|` +
       `${path.type}|${path.latencyMs ?? -1}|${path.errorMessage ?? ''}`;
   }
 
@@ -5449,9 +5397,7 @@ export struct BridgeStatus {
   }
 
   private settingsDetailCanvasBackground(): ResourceColor {
-    // Detail destinations sit above the settings home. They need an opaque
-    // canvas so an immersive app background cannot reveal that page beneath.
-    return $r('sys.color.background_secondary');
+    return this.pageCanvasBackground();
   }
 
   private appBackgroundActive(): boolean {
@@ -5484,7 +5430,7 @@ export struct BridgeStatus {
   }
 
   private connectedHomeLayoutActive(): boolean {
-    return this.isConnected() || this.disconnectInProgress ||
+    return this.meshConnected() || this.disconnectInProgress ||
       (this.isConnecting() && this.trafficSession > 0);
   }
 
@@ -5561,7 +5507,7 @@ export struct BridgeStatus {
     this.selectedPeerTitleOnline = this.peerEffectivelyOnline(peer);
     this.deviceDetailVisible = true;
     this.startDeviceDetailRefreshPolling();
-    if (!this.isConnected() || !this.peerEffectivelyOnline(peer) || peer.addresses.length === 0) {
+    if (!this.meshConnected() || !this.peerEffectivelyOnline(peer) || peer.addresses.length === 0) {
       return;
     }
     this.refreshPeerServices(peer, false);
@@ -5592,7 +5538,7 @@ export struct BridgeStatus {
 
   private refreshSelectedPeerDetails(refreshServices: boolean = false): void {
     this.refreshPeerSnapshot();
-    this.refreshTaildropSnapshot(this.isConnected());
+    this.refreshTaildropSnapshot(this.meshConnected());
     if (!refreshServices || this.deviceDetailServiceRefreshInFlight) {
       return;
     }
@@ -5619,7 +5565,7 @@ export struct BridgeStatus {
     const peerKey: string = this.selectedPeerKey;
     const initialPeer: PeerSummary | undefined = this.peers.find((peer: PeerSummary) =>
       peer.key === peerKey);
-    if (initialPeer === undefined || !this.isConnected() || !this.peerEffectivelyOnline(initialPeer)) {
+    if (initialPeer === undefined || !this.meshConnected() || !this.peerEffectivelyOnline(initialPeer)) {
       return;
     }
     const generation: number = this.lifecycleGeneration;
@@ -5828,7 +5774,7 @@ export struct BridgeStatus {
     if (this.peerServiceRefreshInFlight.has(peer.key)) {
       return;
     }
-    if (!this.isConnected() || !this.peerEffectivelyOnline(peer) || peer.addresses.length === 0) {
+    if (!this.meshConnected() || !this.peerEffectivelyOnline(peer) || peer.addresses.length === 0) {
       if (!manual) {
         return;
       }
@@ -5863,12 +5809,12 @@ export struct BridgeStatus {
     Promise.all([
       sunshineProbe,
       this.mediaServiceProbeService!.probe(peer.key, true, true),
-      this.peerPathService!.probe(peer.key, true, true)
+      this.peerPathService!.probe(peer.key, true, true, this.clashUserspaceActive)
     ]).then((results: [SunshineProbeResult, MediaProbeResult, PeerPathResult]) => {
       const currentPeer: PeerSummary | undefined = this.peers.find(
         (item: PeerSummary) => item.key === peer.key && item.online);
       if (this.streamingRequestIds.get(peer.key) !== requestId ||
-        this.mediaRequestIds.get(peer.key) !== requestId || currentPeer === undefined || !this.isConnected()) {
+        this.mediaRequestIds.get(peer.key) !== requestId || currentPeer === undefined || !this.meshConnected()) {
         return;
       }
       const sunshine: SunshineProbeResult = results[0];
@@ -5959,10 +5905,10 @@ export struct BridgeStatus {
   }
 
   private autoProbeConnectedPeerServices(force: boolean = false): void {
-    if (!this.isConnected()) {
+    if (!this.meshConnected()) {
       return;
     }
-    const session: number = Math.max(1, this.trafficSession);
+    const session: string = `${Math.max(1, this.trafficSession)}|${this.clashUserspaceActive ? 'userspace' : 'vpn'}`;
     this.peers.filter((peer: PeerSummary) => peer.online && peer.addresses.length > 0)
       .forEach((peer: PeerSummary) => {
         if (this.peerServiceRefreshInFlight.has(peer.key)) {
@@ -6144,7 +6090,7 @@ export struct BridgeStatus {
   }
 
   private detectMediaForPeer(peer: PeerSummary, force: boolean): void {
-    if (!this.peerEffectivelyOnline(peer) || peer.addresses.length === 0 || !this.isConnected()) {
+    if (!this.peerEffectivelyOnline(peer) || peer.addresses.length === 0 || !this.meshConnected()) {
       this.showToast('请先连接 MeshArc，并确认目标设备在线');
       return;
     }
@@ -6166,9 +6112,9 @@ export struct BridgeStatus {
     this.recordDiagnosticEvent('media_probe_start', 'requested');
     Promise.all([
       this.mediaServiceProbeService!.probe(peer.key, true, force),
-      this.peerPathService!.probe(peer.key, true, force)
+      this.peerPathService!.probe(peer.key, true, force, this.clashUserspaceActive)
     ]).then((results: [MediaProbeResult, PeerPathResult]) => {
-      if (this.mediaRequestIds.get(peer.key) !== requestId || !this.isConnected()) {
+      if (this.mediaRequestIds.get(peer.key) !== requestId || !this.meshConnected()) {
         return;
       }
       const currentPeer: PeerSummary | undefined = this.peers.find(
@@ -6212,7 +6158,7 @@ export struct BridgeStatus {
   }
 
   private detectStreamingForPeer(peer: PeerSummary, force: boolean): void {
-    if (!this.isSunshineCandidate(peer) || !this.isConnected()) {
+    if (!this.isSunshineCandidate(peer) || !this.meshConnected()) {
       return;
     }
     this.ensureStreamingServices();
@@ -6231,13 +6177,13 @@ export struct BridgeStatus {
     const host: string = this.primaryTailscaleAddress(peer.addresses);
     Promise.all([
       this.sunshineProbeService!.probe(peer.key, host, true, force),
-      this.peerPathService!.probe(peer.key, true, force)
+      this.peerPathService!.probe(peer.key, true, force, this.clashUserspaceActive)
     ]).then((results: [SunshineProbeResult, PeerPathResult]) => {
       const sunshine: SunshineProbeResult = results[0];
       const path: PeerPathResult = results[1];
       const currentPeer: PeerSummary | undefined = this.peers.find((item: PeerSummary) => item.key === peer.key);
       if (this.streamingRequestIds.get(peer.key) !== requestId || currentPeer === undefined || !currentPeer.online ||
-        !this.isConnected()) {
+        !this.meshConnected()) {
         return;
       }
       const current: DeviceStreamingState = this.streamingState(peer.key);
@@ -9964,7 +9910,7 @@ export struct BridgeStatus {
         (peer: PeerSummary) => {
           DeviceDetailSheet({
             online: this.peers.some((current: PeerSummary) => current.key === peer.key && current.online),
-            meshConnected: this.isConnected(),
+            meshConnected: this.meshConnected(),
             path: this.streamingState(peer.key).path,
             tailscaleAddress: this.primaryTailscaleAddress(peer.addresses),
             exitNodeCapable: peer.exitNode,
@@ -9983,7 +9929,7 @@ export struct BridgeStatus {
             taildropAvailable: this.taildropTargetAvailableForPeer(peer),
             taildropOnline: this.taildropTargetOnlineForPeer(peer),
             taildropReady: this.taildropTargetReadyForPeer(peer),
-            remoteFilesEnabled: this.isConnected(),
+            remoteFilesEnabled: this.meshConnected(),
             onRefresh: (): Promise<void> => this.refreshSelectedPeerServicesManually(),
             onOpenStream: (): void => this.launchRemoteStream(peer),
             onOpenMedia: (): void => this.openMediaMethodForPeer(peer),
@@ -10471,7 +10417,7 @@ export struct BridgeStatus {
             .layoutWeight(1)
           Text(this.localDeviceCardStatus())
             .fontSize(12)
-            .fontColor(this.isConnected() ? $r('app.color.status_success') :
+            .fontColor(this.meshConnected() ? $r('app.color.status_success') :
               $r('sys.color.font_secondary'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -10703,7 +10649,7 @@ export struct BridgeStatus {
         DeviceActionButtons({
           sunshineState: this.streamingState(peer.key).sunshine.state,
           reachable: this.streamReachable(this.streamingState(peer.key)),
-          meshConnected: this.isConnected(),
+          meshConnected: this.meshConnected(),
           peerOnline: this.peerEffectivelyOnline(peer),
           ipAvailable: peer.addresses.length > 0,
           launching: this.streamingState(peer.key).launching,
@@ -10750,7 +10696,7 @@ export struct BridgeStatus {
   private DevicesPanel() {
     Column({ space: 8 }) {
       this.SectionHeader($r('app.string.devices_title'),
-        $r('app.string.devices_count', this.homeOnlinePeers().length + (this.isConnected() ? 1 : 0),
+        $r('app.string.devices_count', this.homeOnlinePeers().length + (this.meshConnected() ? 1 : 0),
           this.homePeers().length + 1))
       Text('')
         .id('peer-summary')
@@ -10857,6 +10803,7 @@ export struct BridgeStatus {
       case 'transfer': return $r('app.string.tab_transfer');
       case 'files': return $r('app.string.tab_files');
       case 'settings': return $r('app.string.tab_settings');
+      case 'frp': return 'FRP';
       default: return $r('app.string.tab_home');
     }
   }
@@ -10866,6 +10813,7 @@ export struct BridgeStatus {
       case 'transfer': return $r('app.media.tab_transfer');
       case 'files': return $r('app.media.tab_files');
       case 'settings': return $r('app.media.tab_settings');
+      case 'frp': return $r('app.media.tab_frp');
       default: return $r('app.media.tab_home');
     }
   }
@@ -11081,7 +11029,7 @@ export struct BridgeStatus {
   }
 
   private localSendStateCount(state: string): number {
-    if (!this.isConnected()) {
+    if (!this.meshConnected()) {
       return 0;
     }
     return this.peers.filter((peer: PeerSummary) => this.peerEffectivelyOnline(peer) &&
@@ -11233,7 +11181,7 @@ export struct BridgeStatus {
     this.recordFeatureDiagnosticEvent('feature_diagnostics_refresh_started', 'manual');
     const generation: number = this.lifecycleGeneration;
     this.refreshPeerSnapshot();
-    this.refreshTaildropSnapshot(this.isConnected());
+    this.refreshTaildropSnapshot(this.meshConnected());
     this.requestLocalSendRefresh().then(() => {
       if (generation !== this.lifecycleGeneration || !this.appShellReady) {
         return;
@@ -11944,40 +11892,9 @@ export struct BridgeStatus {
   }
 
   @Builder
-  private UpdateChangelogActionRow() {
-    Button({
-      type: ButtonType.Normal,
-      stateEffect: true,
-      buttonStyle: ButtonStyleMode.TEXTUAL,
-      controlSize: ControlSize.NORMAL
-    }) {
-      Row({ space: 12 }) {
-        Text($r('app.string.update_changelog_title'))
-          .fontSize(13)
-          .fontColor($r('sys.color.font_primary'))
-          .layoutWeight(1)
-          .textAlign(TextAlign.Start)
-        SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(17)
-          .fontColor([$r('sys.color.icon_secondary')])
-      }
-      .width('100%')
-    }
-    .id('update-changelog-settings-action')
-    .width('100%')
-    .height(40)
-    .padding(0)
-    .borderRadius(12)
-    .backgroundColor(Color.Transparent)
-    .onClick(() => this.openUpdateChangelogFromSettings())
-  }
-
-  @Builder
   private VersionPanel() {
     Column({ space: 0 }) {
       this.AppVersionActionRow()
-      Divider().color($r('sys.color.comp_divider'))
-      this.UpdateChangelogActionRow()
       Divider().color($r('sys.color.comp_divider'))
       this.AccountDetailRow($r('app.string.tailscale_version_label'),
         this.tailscaleVersion, 'tailscale-version')
@@ -12517,7 +12434,7 @@ export struct BridgeStatus {
   }
 
   private localSendProtocolState(peer: PeerSummary | undefined): string {
-    if (!this.isConnected() || peer === undefined || !this.peerEffectivelyOnline(peer)) {
+    if (!this.meshConnected() || peer === undefined || !this.peerEffectivelyOnline(peer)) {
       return 'offline';
     }
     if (this.transferProtocolRefreshing) {
@@ -12536,7 +12453,7 @@ export struct BridgeStatus {
 
   private transferTargetDeviceOffline(target: TaildropTargetSummary): boolean {
     const peer: PeerSummary | undefined = this.peerForFileTransferKey(target.key);
-    return !this.isConnected() || (!target.online && (peer === undefined || !this.peerEffectivelyOnline(peer)));
+    return !this.meshConnected() || (!target.online && (peer === undefined || !this.peerEffectivelyOnline(peer)));
   }
 
   @Builder
@@ -12591,7 +12508,7 @@ export struct BridgeStatus {
           Image(this.peerDeviceIcon(target.deviceType))
             .width(22)
             .height(22)
-            .fillColor(this.isConnected() && target.online ? $r('sys.color.icon_primary') :
+            .fillColor(this.meshConnected() && target.online ? $r('sys.color.icon_primary') :
               $r('sys.color.icon_secondary'))
         }
         .width(38)
@@ -12632,7 +12549,7 @@ export struct BridgeStatus {
       .width('100%')
       .constraintSize({ minHeight: 54 })
       .padding({ left: 12, right: 12, top: 7, bottom: 4 })
-      if (this.isConnected() && (target.online || this.localSendAvailableForTarget(target))) {
+      if (this.meshConnected() && (target.online || this.localSendAvailableForTarget(target))) {
         Row() {
           if (this.taildropFileChoicesVisible(target, this.peerForFileTransferKey(target.key))) {
             this.TaildropFileMediaCapsule(target, this.peerForFileTransferKey(target.key))
@@ -12653,7 +12570,7 @@ export struct BridgeStatus {
     .overlay(this.TransferTargetFocusOverlay(target.key), { align: Alignment.Center })
     .backgroundColor(Color.Transparent)
     .borderRadius(16)
-    .opacity(this.isConnected() && (target.online || this.localSendAvailableForTarget(target)) ? 1 : 0.52)
+    .opacity(this.meshConnected() && (target.online || this.localSendAvailableForTarget(target)) ? 1 : 0.52)
     .animation({ duration: MotionTokens.EXPAND, curve: MotionTokens.curve() })
   }
 
@@ -12746,7 +12663,7 @@ export struct BridgeStatus {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
         Row({ space: 10 }) {
-          if (!this.isConnected() || !this.peerEffectivelyOnline(peer)) {
+          if (!this.meshConnected() || !this.peerEffectivelyOnline(peer)) {
             this.TransferDeviceOfflineBadge()
           } else {
             this.TransferProtocolBadge('Taildrop', 'offline')
@@ -12760,7 +12677,7 @@ export struct BridgeStatus {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      if (this.isConnected() && this.peerEffectivelyOnline(peer)) {
+      if (this.meshConnected() && this.peerEffectivelyOnline(peer)) {
         Button($r('app.string.transfer_send_file_action'), {
           type: ButtonType.ROUNDED_RECTANGLE,
           stateEffect: true,
@@ -12844,7 +12761,7 @@ export struct BridgeStatus {
       }
       .width('100%')
 
-      if (this.isConnected() && this.peerEffectivelyOnline(peer)) {
+      if (this.meshConnected() && this.peerEffectivelyOnline(peer)) {
         this.RemoteCachedSendFileCapsule(peer)
       }
 
@@ -12965,7 +12882,7 @@ export struct BridgeStatus {
 
   @Builder
   private TaildropTargetsEmptyPanel() {
-    Text(!this.isConnected() ? $r('app.string.transfer_connect_first_description') :
+    Text(!this.meshConnected() ? $r('app.string.transfer_connect_first_description') :
       this.taildropState === 'disabled' ? $r('app.string.transfer_admin_disabled_description') :
         $r('app.string.transfer_no_targets_description'))
       .fontSize(12)
@@ -13632,13 +13549,13 @@ export struct BridgeStatus {
     Column({ space: 8 }) {
       Row({ space: 8 }) {
         Column({ space: 2 }) {
-          Text(!this.isConnected() && this.remoteCachedPeers().length > 0 ?
+          Text(!this.meshConnected() && this.remoteCachedPeers().length > 0 ?
             $r('app.string.transfer_remote_devices_title') : $r('app.string.transfer_targets_title'))
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('sys.color.font_primary'))
             .width('100%')
-          Text(!this.isConnected() && this.remoteCachedPeers().length > 0 ?
+          Text(!this.meshConnected() && this.remoteCachedPeers().length > 0 ?
             $r('app.string.transfer_remote_devices_description') :
             $r('app.string.transfer_targets_ready_title', this.fileTransferOnlineTargetCount()))
             .fontSize(12)
@@ -13678,7 +13595,7 @@ export struct BridgeStatus {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .padding({ left: 4, top: 8, bottom: 2 })
-      if (!this.isConnected() && this.remoteCachedPeers().length > 0) {
+      if (!this.meshConnected() && this.remoteCachedPeers().length > 0) {
         this.RemoteCachedDevicesSection()
       } else if (this.displayedTaildropTargets().length > 0 || this.peersWithoutTaildropTarget().length > 0) {
         this.TaildropTargetsPanel()
@@ -13762,7 +13679,7 @@ export struct BridgeStatus {
   private TransferContent() {
     Scroll(this.transferScroller) {
       Column({ space: 10 }) {
-        if (!this.isConnected() && this.remoteCachedPeers().length === 0) {
+        if (!this.meshConnected() && this.remoteCachedPeers().length === 0) {
           this.TaildropConnectionNotice()
         }
         if (this.taildropPreparing || this.taildropTransfer.state === 'queued' ||
@@ -14043,7 +13960,7 @@ export struct BridgeStatus {
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
     .scrollBarWidth(4)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14067,7 +13984,7 @@ export struct BridgeStatus {
       .backgroundColor(this.settingsDetailCanvasBackground())
       .edgeEffect(EdgeEffect.Spring)
       .scrollBar(BarState.Auto)
-      .align(Alignment.TopStart)
+      .align(Alignment.Top)
   }
 
   @Builder
@@ -14076,6 +13993,9 @@ export struct BridgeStatus {
       Column({ space: 14 }) {
         this.SettingsGroupHeader($r('app.string.settings_network_preferences_title'))
         this.NetworkSettingsPanel()
+        BackgroundKeepaliveSettings()
+        CoreUpdateSettings()
+        ClashCoexistenceSettings()
         this.SettingsGroupHeader($r('app.string.exit_node_title'))
         this.ExitNodePanel()
       }
@@ -14090,7 +14010,7 @@ export struct BridgeStatus {
     .backgroundColor(this.settingsDetailCanvasBackground())
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14110,7 +14030,7 @@ export struct BridgeStatus {
     .backgroundColor(this.settingsDetailCanvasBackground())
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14130,7 +14050,7 @@ export struct BridgeStatus {
     .backgroundColor(this.settingsDetailCanvasBackground())
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14151,7 +14071,7 @@ export struct BridgeStatus {
     .backgroundColor(this.settingsDetailCanvasBackground())
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14174,7 +14094,7 @@ export struct BridgeStatus {
     .backgroundColor(this.settingsDetailCanvasBackground())
     .edgeEffect(EdgeEffect.Spring)
     .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .align(Alignment.Top)
   }
 
   @Builder
@@ -14600,9 +14520,36 @@ export struct BridgeStatus {
       this.TransferPage()
     } else if (id === 'files') {
       this.FilesPage()
+    } else if (id === 'frp') {
+      this.FrpPage()
     } else {
       this.SettingsPage()
     }
+  }
+
+  @Builder
+  private FrpPage() {
+    HdsNavigation() {
+      Stack() {
+        FrpProfilesPage({
+          scroller: this.frpScroller,
+          bottomInset: this.pageBottomInset(),
+          cardMaxWidth: ResponsiveLayout.SETTINGS_CONTENT_MAX_WIDTH,
+          onEditorVisibilityChange: (visible: boolean) => this.frpEditorVisible = visible
+        })
+      }.width('100%').height('100%')
+    }
+    .titleBar({
+      avoidLayoutSafeArea: true,
+      enableComponentSafeArea: true,
+      content: { title: { mainTitle: 'FRP' } }
+    })
+    .titleMode(HdsNavigationTitleMode.FREE)
+    .bindToScrollable([this.frpScroller])
+    .hideBackButton(true).mode(NavigationMode.Stack)
+    .width('100%').height('100%')
+    .backgroundColor(this.pageCanvasBackground())
+    .id('hds-navigation-frp')
   }
 
   @Builder
@@ -14631,14 +14578,15 @@ export struct BridgeStatus {
     .vertical(false)
     // Keep the settings detail route isolated from the shell's horizontal
     // page gesture. The gesture is restored after the detail route pops.
-    .scrollable(!this.settingsDetailActive && !this.deviceDetailVisible)
+    .scrollable(!this.settingsDetailActive && !this.deviceDetailVisible && !this.frpEditorVisible)
     .animationDuration(MotionTokens.PAGE)
     .barMode(BarMode.Fixed)
-    .barHeight(56)
+    .barWidth(Math.min(Math.max(0, this.layoutWidth - 32), this.layoutWidth < 600 ? 520 : 800))
+    .barHeight(this.frpEditorVisible ? 0 : 56)
     .barOverlap(true)
     .barBackgroundColor(Color.Transparent)
     .barFloatingStyle({
-      barSideMargin: 36,
+      barSideMargin: 16,
       barBottomMargin: this.navigationBottomMargin,
       gradientMask: {
         maskColor: $r('app.color.tab_bar_gradient_mask'),
@@ -14937,23 +14885,6 @@ export struct BridgeStatus {
   }
 
   @Builder
-  private UpdateChangelogContent() {
-    Stack() {
-      UpdateChangelogSheet({
-        entries: this.updateChangelogEntries(),
-        appName: 'MeshArc',
-        materialLevel: this.glowMaterialLevel()
-      })
-      if (this.appLockRequired) {
-        this.AppLockOverlay()
-      }
-    }
-      .width('100%')
-      .height('100%')
-      .id('update-changelog-sheet-content')
-  }
-
-  @Builder
   private AppLockOverlay() {
     if (this.appLockRequired) {
       Column({ space: 14 }) {
@@ -14990,23 +14921,6 @@ export struct BridgeStatus {
   @Builder
   private RootSheetHosts() {
     Stack() {
-      Row()
-        .width(0)
-        .height(0)
-        .id('update-changelog-sheet-host')
-        .bindSheet($$this.updateChangelogVisible, this.UpdateChangelogContent(), {
-          detents: ['80%'],
-          preferType: SheetType.BOTTOM,
-          mode: SheetMode.OVERLAY,
-          scrollSizeMode: ScrollSizeMode.CONTINUOUS,
-          dragBar: true,
-          showClose: false,
-          enableOutsideInteractive: false,
-          backgroundColor: $r('sys.color.background_secondary'),
-          onDisappear: () => {
-            this.onUpdateChangelogSheetDisappear();
-          }
-        })
       Row()
         .width(0)
         .height(0)
@@ -15074,7 +14988,7 @@ export struct BridgeStatus {
           dragBar: true,
           showClose: false,
           enableOutsideInteractive: false,
-          backgroundColor: $r('sys.color.background_secondary'),
+          backgroundColor: this.pageCanvasBackground(),
           onDisappear: () => {
             this.nativeSettingsVisible = false;
           }

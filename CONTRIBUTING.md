@@ -4,7 +4,7 @@ Documentation, translations, device testing and code contributions are welcome.
 
 ## Report a problem
 
-Search [existing issues](https://github.com/flypigJ/Tailscale-OHOS/issues) first, then include:
+Search [existing issues](https://github.com/RockyMtnWolf/MeshArc/issues) first, then include:
 
 - App version and installation source.
 - Device model and HarmonyOS version.
@@ -18,7 +18,7 @@ Remove authentication URLs, keys, tokens, personal account details, device ident
 
 1. For larger changes, open an issue describing the use case first.
 2. Keep each pull request focused; preserve existing protocols, persisted formats and user data.
-3. Keep project documentation in English. For app UI changes, maintain both English and Chinese resources.
+3. Keep the English and Chinese README consistent. For app UI changes, maintain both English and Chinese resources.
 4. Describe the behavior change and validation; say explicitly when device testing was not performed.
 
 For setup and device checks, see the [Windows development guide](docs/development.md) or [macOS build guide](docs/build-macos.md).

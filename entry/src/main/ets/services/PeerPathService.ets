@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { ConnectionPathType, PeerPathResult } from './StreamingModels';
+import nativeBridge from 'libtailscale_ohos.so';
+import { awaitVpnOperation } from './VpnCommandGateway';
 
 const REQUEST_FILE: string = 'peer-connectivity-request.json';
 const RESPONSE_FILE: string = 'peer-connectivity-response.json';
@@ -45,11 +47,13 @@ export class PeerPathService {
     this.requestIds.set(peerKey, (this.requestIds.get(peerKey) ?? 0) + 1);
   }
 
-  async probe(peerKey: string, vpnConnected: boolean, force: boolean = false): Promise<PeerPathResult> {
-    return this.enqueue(() => this.probeInternal(peerKey, vpnConnected, force));
+  async probe(peerKey: string, vpnConnected: boolean, force: boolean = false,
+    userspace: boolean = false): Promise<PeerPathResult> {
+    return this.enqueue(() => this.probeInternal(peerKey, vpnConnected, force, userspace));
   }
 
-  private async probeInternal(peerKey: string, vpnConnected: boolean, force: boolean): Promise<PeerPathResult> {
+  private async probeInternal(peerKey: string, vpnConnected: boolean, force: boolean,
+    userspace: boolean): Promise<PeerPathResult> {
     const cached: PeerPathResult | undefined = this.cache.get(peerKey);
     if (!vpnConnected) {
       this.cache.delete(peerKey);
@@ -61,8 +65,14 @@ export class PeerPathService {
     }
     const requestGeneration: number = (this.requestIds.get(peerKey) ?? 0) + 1;
     this.requestIds.set(peerKey, requestGeneration);
-    const resultText: string = await this.requestThroughVpnExtension(
-      peerKey, this.nextExtensionRequestId());
+    let resultText: string;
+    try {
+      resultText = userspace ? await awaitVpnOperation(nativeBridge.backendPeerConnectivityAsync(peerKey),
+        'userspace peer path', TIMEOUT_MS) : await this.requestThroughVpnExtension(
+        peerKey, this.nextExtensionRequestId());
+    } catch (_error) {
+      resultText = '{"state":"failed","reason":"probe_error"}';
+    }
     if (this.requestIds.get(peerKey) !== requestGeneration) {
       return { type: 'unknown', checkedAt: Date.now(), errorMessage: 'cancelled' };
     }

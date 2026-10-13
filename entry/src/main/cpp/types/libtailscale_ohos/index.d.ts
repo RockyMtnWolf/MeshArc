@@ -1,4 +1,16 @@
 export const hello: () => string;
+export const frpStartAsync: (config: string) => Promise<string>;
+export const frpStopAsync: () => Promise<string>;
+export const frpStatusAsync: () => Promise<string>;
+export const frpProfileStartAsync: (requestJson: string) => Promise<string>;
+export const frpProfileStopAsync: (profileId: string) => Promise<string>;
+export const frpProfilesStatusAsync: () => Promise<string>;
+export const coexistenceStartAsync: () => Promise<string>;
+export const coexistenceStopAsync: () => Promise<string>;
+export const coexistenceStatusAsync: () => Promise<string>;
+export const coexistenceSetInboundTCPPortsAsync: (portsJson: string) => Promise<string>;
+export const coexistenceSetInboundTCPPolicyAsync: (policyJson: string) => Promise<string>;
+export const coexistenceRepairClashConfigAsync: (content: string) => Promise<string>;
 export const probeEngine: () => string;
 export const probeEngineAsync: () => Promise<string>;
 export const backendStart: (stateDir: string, deviceModel: string,
@@ -6,6 +18,7 @@ export const backendStart: (stateDir: string, deviceModel: string,
 export const backendStop: () => string;
 export const backendLogout: () => string;
 export const backendStatus: () => string;
+export const backendStatusAsync: () => Promise<string>;
 export const backendNetworkChangedAsync: (interfaceName: string) => Promise<string>;
 export const backendSnapshot: () => Promise<string>;
 export const backendLocalSendRefreshAsync: () => Promise<string>;

@@ -19,7 +19,7 @@ vm.runInNewContext(stripTypeScriptTypes(`class Controller {
 
 test('a mounted detail sheet reads a fresh LocalSend result despite its captured old peer', () => {
   const c = new sandbox.Controller();
-  c.isConnected = () => true;
+  c.meshConnected = () => true;
   const capturedPeer = { key: 'pc', online: true, localSend: { state: 'unavailable' } };
   c.peers = [capturedPeer];
   assert.equal(c.localSendAvailableForPeer(capturedPeer), false);
@@ -32,7 +32,7 @@ test('a mounted detail sheet reads a fresh LocalSend result despite its captured
 
 test('current peer presence and VPN connection override an old available service', () => {
   const c = new sandbox.Controller();
-  c.isConnected = () => true;
+  c.meshConnected = () => true;
   const capturedPeer = { key: 'pc', online: true, localSend: { state: 'available' } };
   c.peers = [{ ...capturedPeer, online: false }];
   assert.equal(c.localSendAvailableForPeer(capturedPeer), false);
@@ -40,6 +40,6 @@ test('current peer presence and VPN connection override an old available service
   assert.equal(c.localSendAvailableForPeer(capturedPeer), false);
   assert.equal(c.localSendStatusForPeer('pc'), undefined);
   c.peers = [capturedPeer];
-  c.isConnected = () => false;
+  c.meshConnected = () => false;
   assert.equal(c.localSendAvailableForPeer(capturedPeer), false);
 });

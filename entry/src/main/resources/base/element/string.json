@@ -1,6 +1,10 @@
 {
   "string": [
     {
+      "name": "keepalive_location_permission_reason",
+      "value": "Optional simulated location keepalive selected by you. Location is discarded immediately, never saved or uploaded."
+    },
+    {
       "name": "taildrive_title",
       "value": "Taildrive files"
     },
@@ -1383,6 +1387,10 @@
     {
       "name": "feedback_label",
       "value": "Feedback"
+    },
+    {
+      "name": "feedback_email_address",
+      "value": "smartwolf@stu.xidian.edu.cn"
     },
     {
       "name": "feedback_open_failed",

@@ -41,7 +41,7 @@ if (-not $SkipInstall) {
   }
 }
 
-& $hdc -t $target shell aa start -b io.github.tailscaleohos -a EntryAbility | Out-Null
+& $hdc -t $target shell aa start -b io.github.rockymtnwolf.mesharc -a EntryAbility | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "Ability start failed with exit code $LASTEXITCODE"
 }
@@ -108,7 +108,7 @@ for ($attempt = 1; $attempt -le 12; $attempt++) {
   & $hdc -t $target shell uitest uiInput click $statusNode.X $statusNode.Y | Out-Null
 }
 
-$appPid = (& $hdc -t $target shell pidof io.github.tailscaleohos).Trim()
+$appPid = (& $hdc -t $target shell pidof io.github.rockymtnwolf.mesharc).Trim()
 if ($appPid -notmatch '^\d+$') { throw 'The application process exited.' }
 if (-not ($status.Contains('state=NeedsLogin') -or $status.Contains('state=Running'))) {
   throw "Backend did not reach a ready state: $status"

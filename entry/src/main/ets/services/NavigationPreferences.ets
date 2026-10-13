@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 
-export type NavigationTabId = 'home' | 'transfer' | 'files' | 'settings';
+export type NavigationTabId = 'home' | 'transfer' | 'files' | 'frp' | 'settings';
 
 export interface NavigationSettings {
   order: NavigationTabId[];
@@ -9,7 +9,8 @@ export interface NavigationSettings {
   bottomMargin: number;
 }
 
-export const DEFAULT_NAVIGATION_ORDER: NavigationTabId[] = ['home', 'transfer', 'files', 'settings'];
+export const DEFAULT_NAVIGATION_ORDER: NavigationTabId[] =
+  ['home', 'transfer', 'files', 'frp', 'settings'];
 export const DEFAULT_NAVIGATION_HIDDEN: NavigationTabId[] = [];
 export const DEFAULT_NAVIGATION_BOTTOM_MARGIN: number = 30;
 
@@ -35,7 +36,16 @@ export class NavigationPreferences {
       const hidden: string = store.getSync(HIDDEN_KEY, '') as string;
       const bottomMargin: number = store.getSync(
         BOTTOM_MARGIN_KEY, DEFAULT_NAVIGATION_BOTTOM_MARGIN) as number;
-      return NavigationPreferences.normalize(order, hidden, bottomMargin);
+      const normalized: NavigationSettings = NavigationPreferences.normalize(order, hidden, bottomMargin);
+      if (order !== normalized.order.join(',') || hidden !== normalized.hidden.join(',')) {
+        try {
+          store.putSync(ORDER_KEY, normalized.order.join(','));
+          store.putSync(HIDDEN_KEY, normalized.hidden.join(','));
+          await store.flush();
+        } catch (_migrationError) {
+        }
+      }
+      return normalized;
     } catch (_error) {
       return NavigationPreferences.defaults();
     }
@@ -53,14 +63,29 @@ export class NavigationPreferences {
 
   private static normalize(orderValue: string, hiddenValue: string,
     bottomMarginValue: number = DEFAULT_NAVIGATION_BOTTOM_MARGIN): NavigationSettings {
-    const order: NavigationTabId[] = NavigationPreferences.parseList(orderValue);
+    const order: NavigationTabId[] = NavigationPreferences.normalizeStoredOrder(orderValue);
+    let insertionIndex: number = order.indexOf('settings');
+    if (insertionIndex < 0) {
+      insertionIndex = order.length;
+    }
     DEFAULT_NAVIGATION_ORDER.forEach((id: NavigationTabId) => {
       if (!order.includes(id)) {
-        order.push(id);
+        order.splice(insertionIndex, 0, id);
+        insertionIndex++;
       }
     });
-    const hidden: NavigationTabId[] = NavigationPreferences.parseList(hiddenValue)
-      .filter((id: NavigationTabId) => id !== 'settings' && order.includes(id));
+    const storedHidden: string[] = NavigationPreferences.parseList(hiddenValue);
+    const hideFrp: boolean = storedHidden.includes('frp') ||
+      (storedHidden.includes('frp-home') && storedHidden.includes('frp-config'));
+    const hidden: NavigationTabId[] = [];
+    storedHidden.forEach((id: string) => {
+      const tab: NavigationTabId = id === 'frp-home' || id === 'frp-config' ? 'frp' :
+        id as NavigationTabId;
+      if (tab !== 'settings' && order.includes(tab) && !hidden.includes(tab) &&
+        (tab !== 'frp' || hideFrp)) {
+        hidden.push(tab);
+      }
+    });
     if (hidden.length >= order.length) {
       return {
         order: order,
@@ -79,18 +104,31 @@ export class NavigationPreferences {
     return Math.min(100, Math.max(0, Math.round(value)));
   }
 
-  private static parseList(value: string): NavigationTabId[] {
-    const result: NavigationTabId[] = [];
+  private static normalizeStoredOrder(value: string): NavigationTabId[] {
+    const order: NavigationTabId[] = [];
+    NavigationPreferences.parseList(value).forEach((id: string) => {
+      const tab: NavigationTabId = id === 'frp-home' || id === 'frp-config' ? 'frp' :
+        id as NavigationTabId;
+      if (!order.includes(tab)) {
+        order.push(tab);
+      }
+    });
+    return order;
+  }
+
+  private static parseList(value: string): string[] {
+    const result: string[] = [];
     value.split(',').forEach((candidate: string) => {
       const id: string = candidate.trim();
-      if (NavigationPreferences.isTabId(id) && !result.includes(id as NavigationTabId)) {
-        result.push(id as NavigationTabId);
+      if (NavigationPreferences.isStoredTabId(id) && !result.includes(id)) {
+        result.push(id);
       }
     });
     return result;
   }
 
-  private static isTabId(value: string): boolean {
-    return value === 'home' || value === 'transfer' || value === 'files' || value === 'settings';
+  private static isStoredTabId(value: string): boolean {
+    return value === 'home' || value === 'transfer' || value === 'files' || value === 'frp' ||
+      value === 'frp-home' || value === 'frp-config' || value === 'settings';
   }
 }

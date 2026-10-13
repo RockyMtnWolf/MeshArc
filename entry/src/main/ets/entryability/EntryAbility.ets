@@ -11,7 +11,8 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { APP_FOREGROUND_EVENT } from '../services/AppLifecycleEvents';
 import { AppShellFeatureAction, AppShellIntentAdapter } from '../services/AppShellIntentAdapter';
-import { VpnBackgroundTaskManager } from '../services/VpnBackgroundTaskManager';
+import { DesktopTrayService } from '../services/DesktopTrayService';
+import { sharedBackgroundKeepaliveController, sharedVpnBackgroundTask } from '../services/BackgroundKeepaliveController';
 import { DiagnosticPrivacy } from '../services/DiagnosticPrivacy';
 import { WindowEnvironment } from '../services/WindowEnvironment';
 
@@ -20,9 +21,34 @@ const TAG = 'TailscaleOHOS';
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
-  private readonly vpnBackgroundTask: VpnBackgroundTaskManager = new VpnBackgroundTaskManager();
+  private readonly vpnBackgroundTask = sharedVpnBackgroundTask;
+  private readonly desktopTrayService: DesktopTrayService = new DesktopTrayService();
   private readonly appShellIntentAdapter: AppShellIntentAdapter = new AppShellIntentAdapter();
   private readonly windowEnvironment: WindowEnvironment = new WindowEnvironment();
+  private readonly handleWindowWillClose = async (): Promise<boolean> => {
+    const mainWindow = this.mainWindow;
+    if (mainWindow === undefined || !this.desktopTrayService.isRegistered()) {
+      return false;
+    }
+    try {
+      await this.context.hideAbility();
+      return true;
+    } catch (error) {
+      const businessError = error as BusinessError;
+      hilog.warn(DOMAIN, TAG,
+        'Unable to hide the UIAbility. Falling back to minimize; the app may remain in the taskbar. code=%{public}d',
+        businessError.code ?? -1);
+      try {
+        await mainWindow.minimize();
+        return true;
+      } catch (fallbackError) {
+        const fallbackBusinessError = fallbackError as BusinessError;
+        hilog.warn(DOMAIN, TAG, 'Unable to hide or minimize the main window. code=%{public}d',
+          fallbackBusinessError.code ?? -1);
+        return false;
+      }
+    }
+  };
   private appShellContentReady: boolean = false;
   private pendingAppShellFeatureActions: AppShellFeatureAction[] = [];
 
@@ -56,13 +82,28 @@ export default class EntryAbility extends UIAbility {
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    sharedBackgroundKeepaliveController.attach();
     this.vpnBackgroundTask.register(this.context);
+    sharedBackgroundKeepaliveController.selectedMode(this.context).then((mode) => {
+      if (mode !== 'off') {
+        return sharedBackgroundKeepaliveController.activate(this.context, mode).then((result) => {
+          AppStorage.setOrCreate('backgroundKeepaliveRestoreStatus', result.message);
+        });
+      }
+      return Promise.resolve();
+    }).catch((error: BusinessError) => {
+      hilog.warn(DOMAIN, TAG, 'Keepalive restore failed. code=%{public}d', error.code ?? -1);
+    });
     this.handleTaildropNotificationWant(want);
     hilog.info(DOMAIN, TAG, 'EntryAbility onCreate. ability=%{public}s reason=%{public}d',
       want.abilityName ?? '', launchParam.launchReason);
   }
 
   onDestroy(): void {
+    sharedBackgroundKeepaliveController.dispose().catch((error: BusinessError) => {
+      hilog.warn(DOMAIN, TAG, 'Keepalive cleanup failed. code=%{public}d', error.code ?? -1);
+    });
+    this.desktopTrayService.dispose(this.context);
     this.windowEnvironment.detach();
     this.vpnBackgroundTask.unregister();
     hilog.info(DOMAIN, TAG, 'EntryAbility onDestroy');
@@ -79,6 +120,13 @@ export default class EntryAbility extends UIAbility {
     this.applyEdgeToEdge(this.context.config.colorMode);
     if (this.mainWindow !== undefined) {
       this.windowEnvironment.attach(this.mainWindow, this.context.config);
+      this.desktopTrayService.register(this.context);
+      try {
+        this.mainWindow.on('windowWillClose', this.handleWindowWillClose);
+      } catch (error) {
+        const businessError = error as BusinessError;
+        hilog.info(DOMAIN, TAG, 'Window close interception unavailable. code=%{public}d', businessError.code ?? -1);
+      }
     }
     this.requestNotificationAuthorization();
     windowStage.loadContent('pages/Index', (err) => {
@@ -96,6 +144,15 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    const mainWindow = this.mainWindow;
+    if (mainWindow !== undefined) {
+      try {
+        mainWindow.off('windowWillClose', this.handleWindowWillClose);
+      } catch (error) {
+        const businessError = error as BusinessError;
+        hilog.warn(DOMAIN, TAG, 'Window close listener removal failed. code=%{public}d', businessError.code ?? -1);
+      }
+    }
     this.windowEnvironment.detach();
     this.mainWindow = undefined;
     this.appShellContentReady = false;
@@ -109,6 +166,12 @@ export default class EntryAbility extends UIAbility {
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     this.handleTaildropNotificationWant(want);
+    if (this.desktopTrayService.isRegistered()) {
+      this.context.showAbility().catch((error: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, 'Unable to restore the UIAbility from the status bar. code=%{public}d',
+          error.code ?? -1);
+      });
+    }
   }
 
   onForeground(): void {
@@ -120,6 +183,11 @@ export default class EntryAbility extends UIAbility {
 
   onBackground(): void {
     this.vpnBackgroundTask.onBackground(this.context);
+    sharedBackgroundKeepaliveController.onBackground(this.context).then((result) => {
+      AppStorage.setOrCreate('backgroundKeepaliveRestoreStatus', result.message);
+    }).catch((error: BusinessError) => {
+      hilog.warn(DOMAIN, TAG, 'Keepalive background update failed. code=%{public}d', error.code ?? -1);
+    });
     hilog.info(DOMAIN, TAG, 'EntryAbility onBackground');
   }
 

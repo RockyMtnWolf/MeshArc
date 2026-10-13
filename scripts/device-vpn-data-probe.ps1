@@ -21,7 +21,7 @@ if ($usbTargets.Count -ne 1) {
   throw 'Expected exactly one connected USB target.'
 }
 $target = ($usbTargets[0] -split "`t")[0]
-$bundleName = 'io.github.tailscaleohos'
+$bundleName = 'io.github.rockymtnwolf.mesharc'
 $filesDir = "/data/app/el2/$AppUserId/base/$bundleName/haps/entry/files"
 $vpnStatusPath = "$filesDir/vpn-probe-status.txt"
 $peerStatusPath = "$filesDir/vpn-peer-probe-status.txt"

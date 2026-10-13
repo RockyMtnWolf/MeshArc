@@ -23,7 +23,8 @@
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "backgroundModes": [
-          "dataTransfer"
+          "dataTransfer",
+          "audioPlayback"
         ],
         "skills": [
           {
@@ -46,6 +47,15 @@
         "label": "$string:entryability_label",
         "type": "vpn",
         "exported": false
+      },
+      {
+        "name": "MeshArcStatusBarAbility",
+        "srcEntry": "./ets/statusbarviewextensionability/MeshArcStatusBarAbility.ets",
+        "description": "$string:entryability_desc",
+        "icon": "$media:app_icon",
+        "label": "$string:entryability_label",
+        "type": "statusBarView",
+        "exported": true
       }
     ],
     "requestPermissions": [

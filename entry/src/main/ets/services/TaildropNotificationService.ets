@@ -5,7 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'TaildropNotifications';
-const BUNDLE_NAME: string = 'io.github.tailscaleohos';
+const BUNDLE_NAME: string = 'io.github.rockymtnwolf.mesharc';
 const ENTRY_ABILITY_NAME: string = 'EntryAbility';
 const PROGRESS_NOTIFICATION_ID: number = 420001;
 const COMPLETION_NOTIFICATION_BASE_ID: number = 421000;

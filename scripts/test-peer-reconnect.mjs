@@ -12,7 +12,7 @@ function method(name) {
   const end = source.indexOf('\n  }', start) + 4;
   return source.slice(start, end);
 }
-const methods = ['peerEffectivelyOnline', 'peerCardStatus', 'streamingState',
+const methods = ['meshConnected', 'peerEffectivelyOnline', 'peerCardStatus', 'streamingState',
   'copyStreamingState', 'updateStreamingState', 'applyPeers', 'refreshHomeLatency',
   'autoProbeConnectedPeerServices'].map(method).join('\n');
 const js = stripTypeScriptTypes(`class Controller { ${methods} }`);
@@ -36,6 +36,7 @@ function fixture() {
     logServiceStatusIfChanged() {}, scheduleLifecycleTask() {},
     isConnected: () => true, isConnecting: () => false,
     appShellReady: true, lifecycleGeneration: 1, trafficSession: 1,
+    backendStatus: 'state=Running', clashUserspaceActive: false,
     refreshPeerSnapshot() {}, ensureStreamingServices() {}
   });
   return { c, invalidations };
@@ -46,12 +47,12 @@ function path(c, type, checkedAt, errorMessage) {
 }
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 
-test('an online peer with a failed old probe stays in the online group and shows recovery', () => {
+test('an online peer with a failed path probe remains online instead of being marked recovering', () => {
   const { c } = fixture();
   for (const reason of ['no_response', 'peer_offline', 'peer_not_found']) {
     c.streamingStates = [path(c, 'unreachable', 10, reason)];
     assert.equal(c.peerEffectivelyOnline(peer()), true, reason);
-    assert.equal(c.peerCardStatus(peer()), 'app.string.connection_recovering');
+    assert.equal(c.peerCardStatus(peer()), 'app.string.peer_online');
   }
   assert.equal(c.peerEffectivelyOnline(peer(false)), false);
   assert.equal(c.peerCardStatus(peer(false)), 'app.string.peer_offline');

@@ -3,6 +3,24 @@ import { Want } from '@kit.AbilityKit';
 import { vpnExtension } from '@kit.NetworkKit';
 import { fileIo } from '@kit.CoreFileKit';
 
+const VPN_OPERATION_TIMEOUT_MS: number = 8000;
+
+export function awaitVpnOperation(promise: Promise<string>, operation: string,
+  timeoutMs: number = VPN_OPERATION_TIMEOUT_MS): Promise<string> {
+  return new Promise<string>((resolve: (value: string) => void, reject: (reason: Error) => void) => {
+    const timer: number = setTimeout(() => {
+      reject(new Error(`${operation} timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+    promise.then((value: string) => {
+      clearTimeout(timer);
+      resolve(value);
+    }, (error: Error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 export enum VpnCommandState {
   STOPPED = 'stopped',
   STARTING = 'starting',
@@ -25,6 +43,7 @@ export enum VpnCoreCommand {
 export class VpnCommandStateMachine {
   private lifecycleGeneration: number = 0;
   private activeCommandId: number = 0;
+  private timedOutCommandId: number = 0;
   private nextCommandId: number = 1;
   private state: VpnCommandState = VpnCommandState.STOPPED;
 
@@ -32,6 +51,7 @@ export class VpnCommandStateMachine {
     if (this.activeCommandId > 0) {
       return 0;
     }
+    this.timedOutCommandId = 0;
     this.activeCommandId = this.nextCommandId++;
     if (command === VpnCoreCommand.CONNECT) {
       this.state = VpnCommandState.STARTING;
@@ -47,22 +67,37 @@ export class VpnCommandStateMachine {
     return commandId > 0 && commandId === this.activeCommandId;
   }
 
+  isTimedOut(commandId: number): boolean {
+    return commandId > 0 && commandId === this.timedOutCommandId;
+  }
+
   complete(commandId: number, state: VpnCommandState): boolean {
-    if (!this.isActive(commandId)) {
+    if (this.isActive(commandId)) {
+      this.activeCommandId = 0;
+    } else if (this.isTimedOut(commandId)) {
+      this.timedOutCommandId = 0;
+    } else {
       return false;
     }
-    this.activeCommandId = 0;
     this.state = state;
     return true;
   }
 
   timeout(commandId: number): boolean {
-    return this.complete(commandId, VpnCommandState.TIMED_OUT);
+    if (!this.isActive(commandId)) {
+      return false;
+    }
+    this.activeCommandId = 0;
+    this.timedOutCommandId = commandId;
+    this.state = VpnCommandState.TIMED_OUT;
+    return true;
   }
 
   invalidateLifecycle(): void {
     this.lifecycleGeneration++;
     this.activeCommandId = 0;
+    this.timedOutCommandId = 0;
+    this.state = VpnCommandState.STOPPED;
   }
 
   currentState(): VpnCommandState {
@@ -108,8 +143,12 @@ export class VpnCommandGateway {
     return nativeBridge.backendStatus();
   }
 
+  async requestBackendStatus(): Promise<string> {
+    return await awaitVpnOperation(nativeBridge.backendStatusAsync(), 'backend status request');
+  }
+
   async requestVpnConfig(): Promise<string> {
-    return await nativeBridge.backendVpnConfigAsync();
+    return await awaitVpnOperation(nativeBridge.backendVpnConfigAsync(), 'VPN config request');
   }
 
   async requestLoginUrl(): Promise<string> {
@@ -121,7 +160,8 @@ export class VpnCommandGateway {
   }
 
   async stopVpnExtension(want: Want): Promise<void> {
-    await vpnExtension.stopVpnExtensionAbility(want);
+    await awaitVpnOperation(vpnExtension.stopVpnExtensionAbility(want).then(() => 'OK'),
+      'VPN Extension stop');
   }
 
   stageConnectConfig(filesDir: string, fileName: string, config: string): boolean {

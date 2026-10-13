@@ -18,7 +18,7 @@ function deferred() {
 
 function fixture() {
   const f = {
-    now: 1000000, status: '', starts: [], stops: 0, notifications: [], events: [],
+    now: 1000000, status: '', starts: [], updates: [], stops: 0, notifications: [], events: [],
     callbacks: new Map(), startGate: null, publishGate: null, startError: null,
     stopGate: null, readError: false
   };
@@ -34,6 +34,10 @@ function fixture() {
         f.starts.push(modes);
         if (f.startError) throw f.startError;
         if (f.startGate) await f.startGate.promise;
+        return { notificationId: 42, continuousTaskId: 7 };
+      },
+      updateBackgroundRunning: async (_ctx, modes) => {
+        f.updates.push(modes);
         return { notificationId: 42, continuousTaskId: 7 };
       },
       stopBackgroundRunning: async () => { f.stops++; if (f.stopGate) await f.stopGate.promise; }
@@ -162,4 +166,75 @@ test('reconnect waits for in-flight stop before starting the next task', async (
   const stopping = f.tick(); await flush(); f.live(); await f.tick();
   assert.equal(f.starts.length, 1);
   f.stopGate.resolve(); await stopping; await f.tick(); assert.equal(f.starts.length, 2);
+});
+
+test('default off preserves the existing connected-VPN dataTransfer lifecycle', async () => {
+  const f = fixture(); await f.start();
+  assert.equal(f.manager.getKeepaliveTaskState().selectedMode, 'off');
+  assert.equal(JSON.stringify(f.starts), JSON.stringify([['dataTransfer']]));
+  assert.equal(f.updates.length, 0);
+  f.disconnected(); await f.tick();
+  assert.equal(f.stops, 1);
+});
+
+test('download mode may request dataTransfer while VPN is disconnected without fake progress or network work', async () => {
+  const f = fixture(); f.disconnected(); f.manager.register(f.context); await flush();
+  const state = await f.manager.setKeepaliveMode('download'); await flush();
+  assert.equal(JSON.stringify(f.starts), JSON.stringify([['dataTransfer']]));
+  assert.equal(state.selectedMode, 'download');
+  assert.equal(state.taskActive, true);
+  assert.match(f.notifications.at(-1).content.systemLiveView.text, /模拟下载保活（无实际下载）/);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.notifications.at(-1).template)), {
+    name: 'downloadTemplate',
+    data: { title: 'VPN connected', fileName: '模拟下载保活（无实际下载）', progressValue: 0 }
+  });
+  assert.equal(f.updates.length, 0);
+  assert.equal(f.stops, 0);
+  await f.manager.setKeepaliveMode('off'); await flush();
+  assert.equal(f.stops, 1);
+});
+
+test('audio mode uses audioPlayback and preserves connected VPN dataTransfer in the shared task', async () => {
+  const f = fixture(); await f.start();
+  const state = await f.manager.setKeepaliveMode('audio'); await flush();
+  assert.equal(JSON.stringify(f.starts), JSON.stringify([['dataTransfer']]));
+  assert.equal(JSON.stringify(f.updates), JSON.stringify([['dataTransfer', 'audioPlayback']]));
+  assert.equal(state.taskActive, true);
+  assert.equal(f.stops, 0);
+  await f.manager.setKeepaliveMode('off'); await flush();
+  assert.equal(JSON.stringify(f.updates.at(-1)), JSON.stringify(['dataTransfer']));
+  assert.equal(f.stops, 0);
+});
+
+test('audio-only mode starts an audioPlayback task without requiring VPN connectivity', async () => {
+  const f = fixture(); f.disconnected(); f.manager.register(f.context); await flush();
+  const state = await f.manager.setKeepaliveMode('audio'); await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.starts)), [['audioPlayback']]);
+  assert.equal(state.taskActive, true);
+  assert.equal(f.notifications.length, 0);
+  assert.equal(f.stops, 0);
+});
+
+test('FRP and userspace owners are independent and onDestroy retains their shared task', async () => {
+  const f = fixture(); f.disconnected(); f.manager.register(f.context); await flush();
+  await f.manager.setFrpActive(f.context, true); await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.starts)), [['dataTransfer']]);
+  await f.manager.setUserspaceActive(f.context, true); await flush();
+  assert.equal(f.updates.length, 0);
+  await f.manager.setFrpActive(f.context, false); await flush();
+  assert.equal(f.stops, 0);
+  f.manager.unregister(); await flush();
+  assert.equal(f.stops, 0);
+  await f.manager.setUserspaceActive(f.context, false); await flush();
+  assert.equal(f.stops, 1);
+});
+
+test('userspace release does not stop an independently active FRP owner', async () => {
+  const f = fixture(); f.disconnected(); f.manager.register(f.context); await flush();
+  await f.manager.setUserspaceActive(f.context, true); await flush();
+  await f.manager.setFrpActive(f.context, true); await flush();
+  await f.manager.setUserspaceActive(f.context, false); await flush();
+  assert.equal(f.stops, 0);
+  await f.manager.setFrpActive(f.context, false); await flush();
+  assert.equal(f.stops, 1);
 });

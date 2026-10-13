@@ -91,11 +91,11 @@ $safeGoRoot = $goRoot.Replace('\', '/')
 $patchAlreadyApplied = Test-GitPatchApplied `
   -Repository $goRoot -SafeRepository $safeGoRoot -Patch $goResourcePatch
 if (-not $patchAlreadyApplied) {
-  & git -c "safe.directory=$safeGoRoot" -C $goRoot apply --check $goResourcePatch
+  & git -c "safe.directory=$safeGoRoot" -C $goRoot apply --check --ignore-space-change --ignore-whitespace $goResourcePatch
   if ($LASTEXITCODE -ne 0) {
     throw 'The OpenHarmony Go resource-safety patch does not apply cleanly.'
   }
-  & git -c "safe.directory=$safeGoRoot" -C $goRoot apply $goResourcePatch
+  & git -c "safe.directory=$safeGoRoot" -C $goRoot apply --ignore-space-change --ignore-whitespace $goResourcePatch
   if ($LASTEXITCODE -ne 0) {
     throw 'Applying the OpenHarmony Go resource-safety patch failed.'
 	}
@@ -110,11 +110,11 @@ $safeTailscaleRoot = $tailscaleRoot.Replace('\', '/')
 $tailscalePatchAlreadyApplied = Test-GitPatchApplied `
   -Repository $tailscaleRoot -SafeRepository $safeTailscaleRoot -Patch $tailscalePatch
 if (-not $tailscalePatchAlreadyApplied) {
-  & git -c "safe.directory=$safeTailscaleRoot" -C $tailscaleRoot apply --check $tailscalePatch
+  & git -c "safe.directory=$safeTailscaleRoot" -C $tailscaleRoot apply --check --ignore-space-change --ignore-whitespace $tailscalePatch
   if ($LASTEXITCODE -ne 0) {
     throw 'The HarmonyOS Tailscale integration patch does not apply cleanly.'
   }
-  & git -c "safe.directory=$safeTailscaleRoot" -C $tailscaleRoot apply $tailscalePatch
+  & git -c "safe.directory=$safeTailscaleRoot" -C $tailscaleRoot apply --ignore-space-change --ignore-whitespace $tailscalePatch
   if ($LASTEXITCODE -ne 0) {
     throw 'Applying the HarmonyOS Tailscale integration patch failed.'
   }

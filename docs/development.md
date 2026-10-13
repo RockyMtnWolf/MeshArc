@@ -20,6 +20,7 @@ ArkTS / ArkUI application
 | `entry/src/main/ets/` | UI, application services and VPN Extension lifecycle. |
 | `entry/src/main/cpp/` | Node-API bridge between ArkTS and Go. |
 | `native/go_bridge/` | Tailscale integration, routing, device discovery and file services. |
+| `third_party/frp-compat/` | In-tree vendored FRP v0.52.0 compatibility fallback; the Go module replace points here, so a fresh build does not rely on an independently populated FRP cache. |
 | `patches/` | OpenHarmony Go and Tailscale integration patches. |
 | `scripts/` | Build, artifact verification and physical-device probes. |
 | `AppScope/app.json5` | Application identity and source-of-truth version values. |
@@ -41,7 +42,10 @@ A fresh clone is **not yet a one-command build**. Native toolchains, upstream so
 2. Make DevEco Studio discoverable through `DEVECO_STUDIO_HOME`, `DEVECO_HOME`, or the standard Windows install location. `DEVECO_SDK_HOME` can select the SDK used by the build scripts.
 3. Prepare the OpenHarmony SIG Go 1.24 toolchain at `third_party/ohos-go/`, including `bin/go.exe`. The repository does not currently provide a complete toolchain-bootstrap script; ordinary desktop Go is not a substitute for this target.
 4. Check out Tailscale `v1.86.5` at `third_party/tailscale/`. The bridge's `go.mod` uses a local replacement pointing there. `scripts/build-go.ps1` checks and applies the patches from `patches/`.
-5. Copy `build-profile.example.json5` to the ignored `build-profile.json5`, configure your own local development signing through DevEco Studio, and sync project dependencies in the IDE. The example deliberately contains no signing credentials.
+5. FRP is supplied by the in-tree `third_party/frp-compat/` source at v0.52.0 (compatibility fallback, not latest); `native/go_bridge/go.mod` replaces the module with this directory. It is not sourced only from `.tools/gomodcache`. The vendored tree retains upstream `LICENSE`; `LICENSES/FRP.txt` is the corresponding release notice. At this snapshot, the only Go source delta against the matching cached v0.52.0 module is `third_party/frp-compat/client/control.go`, adding `Control.GetAllProxyStatus()`. Update this list whenever further vendor edits land, including any upcoming exporter changes.
+6. Copy `build-profile.example.json5` to the ignored `build-profile.json5`, configure your own local development signing through DevEco Studio, and sync project dependencies in the IDE. The example deliberately contains no signing credentials.
+
+The vendored upstream `.github/workflows/` and `.circleci/config.yml` are nested under `third_party/frp-compat/`. The MeshArc repository has no root `.github/workflows/` or `.circleci/config.yml`; these nested files are not discovered as this repository's default workflows. Do not move/enable them without review: upstream image/release workflows publish artifacts and reference registry secrets. No workflow was executed as part of this review.
 
 Keep private keys, keystores, passwords and provisioning profiles out of Git. The original maintainer's signing material is not needed for a contributor build.
 

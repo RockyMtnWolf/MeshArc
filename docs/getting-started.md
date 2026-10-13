@@ -6,11 +6,11 @@
 
 ### AppGallery
 
-[Get MeshArc on Huawei AppGallery](https://appgallery.huawei.com/app/detail?id=io.github.tailscaleohos). Check the listing for device eligibility and system requirements.
+No AppGallery listing URL is available yet. Do not infer or construct a store URL from the bundle ID; check this guide again after an official listing is published.
 
 ### GitHub Releases
 
-[GitHub Releases](https://github.com/flypigJ/Tailscale-OHOS/releases/latest) provides HAP builds, release notes and checksums. Read the notes for the package you choose: features, signing profiles and installation requirements can differ between releases.
+[GitHub Releases](https://github.com/RockyMtnWolf/MeshArc/releases) provides HAP builds and release notes. The beta HAP is unsigned and requires your own compatible signing materials before installation; it is not an AppGallery release. Read the notes for the package you choose.
 
 The source project targets HarmonyOS 6.1 / API 23 and arm64. A downloaded HAP still needs to satisfy the installation and signing requirements of your device. Early `0.3.19-release` builds use a development provisioning profile and are not universally installable.
 
@@ -39,4 +39,4 @@ MeshArc does not expose remote services or change your tailnet access policy for
 
 Check that both devices are online in the same tailnet, the remote service is running, and your access policy permits the connection. Screen-off, network-transition and long-session reliability remain areas of active testing.
 
-For persistent problems, search [existing issues](https://github.com/flypigJ/Tailscale-OHOS/issues), then follow the [reporting guide](../CONTRIBUTING.md#report-a-problem). Include your MeshArc version, device model, HarmonyOS version and reproduction steps.
+For persistent problems, search [existing issues](https://github.com/RockyMtnWolf/MeshArc/issues), then follow the [reporting guide](../CONTRIBUTING.md#report-a-problem). Include your MeshArc version, device model, HarmonyOS version and reproduction steps.

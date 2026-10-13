@@ -1,12 +1,31 @@
 import nativeBridge from 'libtailscale_ohos.so';
+import { awaitVpnOperation } from './VpnCommandGateway';
+
+interface HomeUserspaceModeStatus {
+  active?: boolean;
+}
 
 /**
  * Owns only Home's read operations. Connection commands and VPN lifecycle
  * handling stay with their existing owner until their dedicated milestone.
  */
 export class HomeReadOnlyGateway {
+  async readUserspaceModeActive(): Promise<boolean> {
+    const raw: string = await awaitVpnOperation(nativeBridge.coexistenceStatusAsync(),
+      'userspace mode status');
+    const status: HomeUserspaceModeStatus = JSON.parse(raw) as HomeUserspaceModeStatus;
+    if (typeof status.active !== 'boolean') {
+      throw new Error('Invalid userspace mode status');
+    }
+    return status.active;
+  }
+
   async readBackendSnapshot<T>(): Promise<T> {
-    return JSON.parse(await nativeBridge.backendSnapshot()) as T;
+    return JSON.parse(await awaitVpnOperation(nativeBridge.backendSnapshot(), 'backend snapshot request')) as T;
+  }
+
+  async refreshLocalSend(): Promise<string> {
+    return awaitVpnOperation(nativeBridge.backendLocalSendRefreshAsync(), 'LocalSend refresh', 25000);
   }
 
   readPeers<T>(): T {

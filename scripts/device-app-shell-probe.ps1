@@ -11,7 +11,7 @@ $hdc = Join-Path $devecoHome 'sdk\default\openharmony\toolchains\hdc.exe'
 $usbTargets = @(& $hdc list targets -v | Where-Object { $_ -match "`t`tUSB`tConnected`t" })
 if ($usbTargets.Count -ne 1) { throw 'Expected exactly one connected USB target.' }
 $target = ($usbTargets[0] -split "`t")[0]
-$bundleName = 'io.github.tailscaleohos'
+$bundleName = 'io.github.rockymtnwolf.mesharc'
 
 if (-not $SkipInstall) {
   $hap = Join-Path $projectRoot 'entry\build\default\outputs\default\entry-default-signed.hap'

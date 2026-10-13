@@ -26,7 +26,7 @@ if ($usbTargets.Count -ne 1) {
   throw 'Expected exactly one connected USB target.'
 }
 $target = ($usbTargets[0] -split "`t")[0]
-$bundleName = 'io.github.tailscaleohos'
+$bundleName = 'io.github.rockymtnwolf.mesharc'
 $remoteLayout = '/data/local/tmp/mesh-taildrive-probe.json'
 $localLayout = Join-Path $projectRoot '.hvigor\outputs\taildrive-probe.json'
 

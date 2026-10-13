@@ -317,6 +317,7 @@ func (b *backendController) start(stateDir, deviceModel, osVersion, controlURL s
 }
 
 func (b *backendController) stop() string {
+	stopCoexistence()
 	b.cancelTaildropTransfer("disconnected")
 	b.cancelTaildriveTransfer("disconnected")
 	b.mu.Lock()
@@ -459,6 +460,7 @@ func (b *backendController) restartWithTun(
 		return "FAILED | VPN backend | TUN descriptor adaptation"
 	}
 
+	stopCoexistence()
 	b.cancelTaildriveTransfer("vpn_restart")
 	b.mu.Lock()
 	b.osVersion = strings.TrimSpace(osVersion)

@@ -1,5 +1,6 @@
 {
   "string": [
+    { "name": "keepalive_location_permission_reason", "value": "仅用于你选择的模拟定位保活。位置信息立即丢弃，不保存、不上传。" },
     { "name": "taildrive_title", "value": "\u8fdc\u7a0b\u6587\u4ef6" },
     { "name": "taildrive_subtitle", "value": "\u6d4f\u89c8 Tailnet \u8bbe\u5907\u5171\u4eab\u7684\u6587\u4ef6\u5939" },
     { "name": "taildrive_connect_first", "value": "\u8bf7\u5148\u8fde\u63a5 Tailscale \u4ee5\u6d4f\u89c8\u8fdc\u7a0b\u6587\u4ef6" },
@@ -341,6 +342,7 @@
     { "name": "welcome_dialog_message", "value": "本应用目前仍处于早期开发阶段，部分功能可能尚未完善，使用过程中可能会遇到异常或兼容性问题\n\n如果您遇到问题，欢迎通过 设置 > 关于 > 反馈 联系我们，您的建议将帮助应用持续改进\n\n感谢您的理解与支持！" },
     { "name": "welcome_dialog_action", "value": "我知道了" },
     { "name": "feedback_label", "value": "反馈" },
+    { "name": "feedback_email_address", "value": "smartwolf@stu.xidian.edu.cn" },
     { "name": "feedback_open_failed", "value": "无法打开邮件应用" },
     { "name": "app_version_label", "value": "应用版本" },
     { "name": "tailscale_version_label", "value": "Tailscale 内核" },

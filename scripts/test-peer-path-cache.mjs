@@ -9,7 +9,11 @@ const js = stripTypeScriptTypes(src.replace(/^import .*;\r?$/gm, '')
   .replace('export class PeerPathService', 'class PeerPathService'));
 function fixture() {
   const f = { now: 10000, calls: 0, type: 'derp' };
-  const sandbox = { Date: { now: () => f.now } };
+  const sandbox = { Date: { now: () => f.now },
+    nativeBridge: { backendPeerConnectivityAsync: async () => {
+      f.nativeCalls = (f.nativeCalls || 0) + 1;
+      return JSON.stringify({ state: 'reachable', pathType: 'direct' });
+    } }, awaitVpnOperation: async operation => operation };
   vm.runInNewContext(js + '\nglobalThis.Service = PeerPathService;', sandbox);
   f.service = new sandbox.Service({ filesDir: '/files' });
   f.service.requestThroughVpnExtension = async () => {
@@ -29,4 +33,12 @@ test('disconnect overrides a previously cached direct path', async () => {
   const f = fixture(); f.type = 'direct'; await f.service.probe('peer', true);
   const result = await f.service.probe('peer', false);
   assert.equal(result.type, 'unknown'); assert.equal(result.errorMessage, 'mesh_disconnected');
+});
+
+test('userspace path probes call the live native backend instead of the VPN extension', async () => {
+  const harness = fixture();
+  const result = await harness.service.probe('peer', true, true, true);
+  assert.equal(result.type, 'direct');
+  assert.equal(harness.nativeCalls, 1);
+  assert.equal(harness.calls, 0);
 });

@@ -41,7 +41,7 @@ if (-not $SkipInstall) {
   }
 }
 
-& $hdc -t $target shell aa start -b io.github.tailscaleohos -a EntryAbility | Out-Null
+& $hdc -t $target shell aa start -b io.github.rockymtnwolf.mesharc -a EntryAbility | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "Ability start failed with exit code $LASTEXITCODE"
 }
@@ -85,7 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Start-Sleep -Seconds 1
 
-$appPid = & $hdc -t $target shell pidof io.github.tailscaleohos
+$appPid = & $hdc -t $target shell pidof io.github.rockymtnwolf.mesharc
 if ($appPid -notmatch '\d') {
   throw 'The application process exited during the engine probe.'
 }

@@ -231,6 +231,7 @@ export struct UpdateChangelogSheet {
         .backgroundColor($r('sys.color.background_secondary'))
     }
       .titleMode(HdsNavigationTitleMode.MODAL)
+      .mode(NavigationMode.Stack)
       .titleBar({
         enableComponentSafeArea: true,
         style: {

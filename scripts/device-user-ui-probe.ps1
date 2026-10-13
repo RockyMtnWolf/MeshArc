@@ -34,7 +34,7 @@ if (-not $SkipInstall) {
   }
 }
 
-$startOutput = (& $hdc -t $target shell aa start -b io.github.tailscaleohos -a EntryAbility 2>&1) -join "`n"
+$startOutput = (& $hdc -t $target shell aa start -b io.github.rockymtnwolf.mesharc -a EntryAbility 2>&1) -join "`n"
 if ($startOutput.Contains('device screen is locked')) {
   throw 'The device screen is locked. Unlock it before running the UI probe.'
 }

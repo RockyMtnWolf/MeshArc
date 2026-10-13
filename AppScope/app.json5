@@ -1,9 +1,9 @@
 {
   "app": {
-    "bundleName": "io.github.tailscaleohos",
-    "vendor": "TailscaleOHOS contributors",
-    "versionCode": 100000003,
-    "versionName": "1.1.0",
+    "bundleName": "io.github.rockymtnwolf.mesharc",
+    "vendor": "蒋厚斌",
+    "versionCode": 100000005,
+    "versionName": "1.1.1-beta.1",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

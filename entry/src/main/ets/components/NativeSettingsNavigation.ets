@@ -516,7 +516,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('sys.color.background_secondary'))
+      .backgroundColor(Color.Transparent)
       .edgeEffect(EdgeEffect.Spring)
       .scrollBar(BarState.Auto)
       .nestedScroll({
@@ -646,30 +646,6 @@ export struct NativeSettingsNavigation {
   }
 
   @Builder
-  private BackgroundPreviewCard(): void {
-    Stack({ alignContent: Alignment.Center }) {
-      if (this.backgroundImageUri.length > 0) {
-        Image(this.backgroundImageUri)
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-      } else {
-        Row()
-          .width('100%')
-          .height('100%')
-          .backgroundColor($r('sys.color.comp_background_tertiary'))
-      }
-    }
-      .borderRadius(24)
-      .clip(true)
-      .width('100%')
-      .height(220)
-      .backgroundColor($r('sys.color.comp_background_tertiary'))
-      .border({ width: 1, color: $r('sys.color.comp_divider'), radius: 24 })
-      .id('native-settings-background-preview')
-  }
-
-  @Builder
   private ToggleRow(title: ResourceStr, description: ResourceStr, isOn: boolean,
     onChange: (value: boolean) => void): void {
     Row({ space: 10 }) {
@@ -718,7 +694,6 @@ export struct NativeSettingsNavigation {
     Column() {
       Scroll(this.pageScroller) {
         Column({ space: 14 }) {
-          this.BackgroundPreviewCard()
           Button({ type: ButtonType.Normal, stateEffect: true }) {
             Row({ space: 12 }) {
               SymbolGlyph($r('sys.symbol.picture'))
@@ -862,7 +837,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('sys.color.background_secondary'))
+      .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -927,7 +902,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('sys.color.background_secondary'))
+      .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1041,7 +1016,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('sys.color.background_secondary'))
+      .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1070,7 +1045,7 @@ export struct NativeSettingsNavigation {
         .titleBar(this.modalTitleBar($r('app.string.native_settings_background_material')))
         .hideBackButton(true)
         .bindToScrollable([this.pageScroller])
-        .backgroundColor($r('sys.color.background_secondary'))
+        .backgroundColor(Color.Transparent)
     } else if (name === 'animation') {
       HdsNavDestination() {
         this.AnimationPage()
@@ -1079,7 +1054,7 @@ export struct NativeSettingsNavigation {
         .titleBar(this.modalTitleBar($r('app.string.native_settings_animation')))
         .hideBackButton(true)
         .bindToScrollable([this.pageScroller])
-        .backgroundColor($r('sys.color.background_secondary'))
+        .backgroundColor(Color.Transparent)
     } else if (name === 'storage') {
       HdsNavDestination() {
         this.StoragePage()
@@ -1088,7 +1063,7 @@ export struct NativeSettingsNavigation {
         .titleBar(this.modalTitleBar($r('app.string.native_settings_storage')))
         .hideBackButton(false)
         .bindToScrollable([this.pageScroller])
-        .backgroundColor($r('sys.color.background_secondary'))
+        .backgroundColor(Color.Transparent)
     }
   }
 
@@ -1101,13 +1076,14 @@ export struct NativeSettingsNavigation {
       }
     }
       .titleMode(HdsNavigationTitleMode.MODAL)
+      .mode(NavigationMode.Stack)
       .titleBar(this.modalTitleBar(this.pageName === 'animation' ?
         $r('app.string.native_settings_animation') :
         $r('app.string.native_settings_background_material')))
       .hideBackButton(true)
       .width('100%')
       .height('100%')
-      .backgroundColor($r('sys.color.background_secondary'))
+      .backgroundColor(Color.Transparent)
       .id(this.pageName === 'animation' ?
         'native-animation-settings' : 'native-background-material-settings')
   }

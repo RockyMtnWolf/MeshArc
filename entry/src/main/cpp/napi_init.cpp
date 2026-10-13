@@ -18,6 +18,12 @@ struct AsyncStringWork {
 
 enum class AsyncInputOperation {
     NetworkChanged,
+    FrpStart,
+    FrpProfileStart,
+    FrpProfileStop,
+    CoexistenceSetInboundTCPPorts,
+    CoexistenceSetInboundTCPPolicy,
+    ClashRepairConfig,
     SetExitNode,
     SetNetworkSetting,
     PeerConnectivity,
@@ -104,7 +110,19 @@ void ExecuteAsyncInput(napi_env env, void* data)
     (void)env;
     auto* work = static_cast<AsyncInputWork*>(data);
     char* message = nullptr;
-    if (work->operation == AsyncInputOperation::NetworkChanged) {
+    if (work->operation == AsyncInputOperation::FrpStart) {
+        message = TSFrpStart(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::FrpProfileStart) {
+        message = TSFrpProfileStart(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::FrpProfileStop) {
+        message = TSFrpProfileStop(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::CoexistenceSetInboundTCPPorts) {
+        message = TSCoexistenceSetInboundTCPPorts(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::CoexistenceSetInboundTCPPolicy) {
+        message = TSCoexistenceSetInboundTCPPolicy(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::ClashRepairConfig) {
+        message = TSClashRepairConfig(const_cast<char*>(work->input.c_str()));
+    } else if (work->operation == AsyncInputOperation::NetworkChanged) {
         message = TSBackendNetworkChanged(const_cast<char*>(work->input.c_str()));
     } else if (work->operation == AsyncInputOperation::SetExitNode) {
         message = TSBackendSetExitNode(const_cast<char*>(work->input.c_str()));
@@ -383,6 +401,27 @@ napi_value BackendTaildriveRequestAsync(
         napi_throw_type_error(env, nullptr, "Taildrive request must be a string");
         return nullptr;
     }
+    if (operation == AsyncInputOperation::FrpStart && length > 262144) {
+        napi_throw_range_error(env, nullptr, "FRP configuration exceeds 256 KiB");
+        return nullptr;
+    }
+    if (operation == AsyncInputOperation::FrpProfileStart && length > 1048576) {
+        napi_throw_range_error(env, nullptr, "FRP profile request exceeds 1 MiB");
+        return nullptr;
+    }
+    if (operation == AsyncInputOperation::FrpProfileStop && length > 100) {
+        napi_throw_range_error(env, nullptr, "FRP profileId exceeds 100 bytes");
+        return nullptr;
+    }
+    if ((operation == AsyncInputOperation::CoexistenceSetInboundTCPPorts ||
+        operation == AsyncInputOperation::CoexistenceSetInboundTCPPolicy) && length > 256) {
+        napi_throw_range_error(env, nullptr, "Inbound TCP port list exceeds 256 bytes");
+        return nullptr;
+    }
+    if (operation == AsyncInputOperation::ClashRepairConfig && length > 2097152) {
+        napi_throw_range_error(env, nullptr, "Clash configuration exceeds 2 MiB");
+        return nullptr;
+    }
     std::vector<char> request(length + 1, '\0');
     if (napi_get_value_string_utf8(env, args[0], request.data(), request.size(), &length) != napi_ok) {
         napi_throw_error(env, nullptr, readError);
@@ -396,6 +435,82 @@ napi_value BackendTaildriveListAsync(napi_env env, napi_callback_info info)
     return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::TaildriveList,
         "backendTaildriveListAsync requires one request", "Failed to read the Taildrive list request",
         "TailscaleBackendTaildriveList");
+}
+
+napi_value FrpStartAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::FrpStart,
+        "frpStartAsync requires one TOML configuration", "Failed to read FRP configuration", "FrpStart");
+}
+
+napi_value FrpStopAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSFrpStop, "FrpStop");
+}
+
+napi_value FrpStatusAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSFrpStatus, "FrpStatus");
+}
+
+napi_value FrpProfileStartAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::FrpProfileStart,
+        "frpProfileStartAsync requires one JSON request", "Failed to read FRP profile request",
+        "FrpProfileStart");
+}
+
+napi_value FrpProfileStopAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::FrpProfileStop,
+        "frpProfileStopAsync requires one profileId", "Failed to read FRP profileId", "FrpProfileStop");
+}
+
+napi_value FrpProfilesStatusAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSFrpProfilesStatus, "FrpProfilesStatus");
+}
+
+napi_value CoexistenceStartAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSCoexistenceStart, "CoexistenceStart");
+}
+
+napi_value CoexistenceStopAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSCoexistenceStop, "CoexistenceStop");
+}
+
+napi_value CoexistenceStatusAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSCoexistenceStatus, "CoexistenceStatus");
+}
+
+napi_value CoexistenceSetInboundTCPPortsAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::CoexistenceSetInboundTCPPorts,
+        "coexistenceSetInboundTCPPortsAsync requires one JSON port array",
+        "Failed to read inbound TCP port list", "CoexistenceSetInboundTCPPorts");
+}
+
+napi_value CoexistenceSetInboundTCPPolicyAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::CoexistenceSetInboundTCPPolicy,
+        "coexistenceSetInboundTCPPolicyAsync requires one JSON policy",
+        "Failed to read inbound TCP policy", "CoexistenceSetInboundTCPPolicy");
+}
+
+napi_value CoexistenceRepairClashConfigAsync(napi_env env, napi_callback_info info)
+{
+    return BackendTaildriveRequestAsync(env, info, AsyncInputOperation::ClashRepairConfig,
+        "coexistenceRepairClashConfigAsync requires one Clash configuration string",
+        "Failed to read Clash configuration", "CoexistenceRepairClashConfig");
 }
 
 napi_value BackendTaildriveStatAsync(napi_env env, napi_callback_info info)
@@ -665,6 +780,12 @@ napi_value BackendStatus(napi_env env, napi_callback_info info)
         return nullptr;
     }
     return result;
+}
+
+napi_value BackendStatusAsync(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return CreateAsyncStringPromise(env, TSBackendStatus, "TailscaleBackendStatus");
 }
 
 napi_value BackendAuthURL(napi_env env, napi_callback_info info)
@@ -1004,12 +1125,28 @@ static napi_value Init(napi_env env, napi_value exports)
 {
     napi_property_descriptor descriptors[] = {
         {"hello", nullptr, Hello, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpStartAsync", nullptr, FrpStartAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpStopAsync", nullptr, FrpStopAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpStatusAsync", nullptr, FrpStatusAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpProfileStartAsync", nullptr, FrpProfileStartAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpProfileStopAsync", nullptr, FrpProfileStopAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"frpProfilesStatusAsync", nullptr, FrpProfilesStatusAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"coexistenceStartAsync", nullptr, CoexistenceStartAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"coexistenceStopAsync", nullptr, CoexistenceStopAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"coexistenceStatusAsync", nullptr, CoexistenceStatusAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"coexistenceSetInboundTCPPortsAsync", nullptr, CoexistenceSetInboundTCPPortsAsync, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
+        {"coexistenceSetInboundTCPPolicyAsync", nullptr, CoexistenceSetInboundTCPPolicyAsync, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
+        {"coexistenceRepairClashConfigAsync", nullptr, CoexistenceRepairClashConfigAsync, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
         {"probeEngine", nullptr, ProbeEngine, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"probeEngineAsync", nullptr, ProbeEngineAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendStart", nullptr, BackendStart, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendStop", nullptr, BackendStop, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendLogout", nullptr, BackendLogout, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendStatus", nullptr, BackendStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"backendStatusAsync", nullptr, BackendStatusAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendSnapshot", nullptr, BackendSnapshotAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"backendLocalSendRefreshAsync", nullptr, BackendLocalSendRefreshAsync, nullptr, nullptr, nullptr,
             napi_default, nullptr},
