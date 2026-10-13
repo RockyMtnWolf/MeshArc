@@ -64,6 +64,14 @@ FRP 基于本地兼容补丁版 v0.52.0；已测试的是 TOML 配置。stock v0
 ./scripts/build.ps1
 ```
 
+上架 AppGallery 时，应构建整个产品的 Release `.app`，而不是把 `.hap` 改后缀：
+
+```powershell
+devecocli build --product default --build-mode release
+```
+
+`.app` 用于应用市场送审；`.hap` 是模块安装包，本地安装需使用设备接受的签名。
+
 仓库不含签名凭据。未配置签名时构建产物为未签名 HAP；安装需要设备接受的有效签名。
 
 ## 许可证与致谢

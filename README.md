@@ -64,6 +64,14 @@ Prepare DevEco Studio and the HarmonyOS SDK, the OpenHarmony Go `1.24.5` toolcha
 ./scripts/build.ps1
 ```
 
+For AppGallery submission, build the whole product as a Release `.app`, rather than renaming a `.hap`:
+
+```powershell
+devecocli build --product default --build-mode release
+```
+
+The `.app` is the store submission package; `.hap` files are module packages for local installation with an accepted signature.
+
 The repository does not include signing credentials. A build without them produces an unsigned HAP; installation requires a device-accepted signature.
 
 ## License and credits

@@ -28,7 +28,13 @@
   "modules": [
     {
       "name": "entry",
-      "srcPath": "./entry"
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": ["default"]
+        }
+      ]
     },
     {
       "name": "common",
