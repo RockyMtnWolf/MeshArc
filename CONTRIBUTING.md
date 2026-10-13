@@ -21,7 +21,7 @@ Remove authentication URLs, keys, tokens, personal account details, device ident
 3. Keep the English and Chinese README consistent. For app UI changes, maintain both English and Chinese resources.
 4. Describe the behavior change and validation; say explicitly when device testing was not performed.
 
-For setup and device checks, see the [Windows development guide](docs/development.md) or [macOS build guide](docs/build-macos.md).
+For a local build, prepare DevEco Studio and the HarmonyOS SDK, the OpenHarmony Go toolchain, the pinned Tailscale source, and local signing configuration. On Windows PowerShell, copy `build-profile.example.json5` to the ignored `build-profile.json5`, configure signing, and run `./scripts/build.ps1`.
 
 ## Ways to help
 
@@ -30,7 +30,7 @@ For setup and device checks, see the [Windows development guide](docs/developmen
 - Report real-device behavior across phones, tablets and 2in1 devices.
 - Reproduce and narrow down network-transition, transfer or layout issues.
 
-Check your diff before submitting. Exclude unrelated changes, generated build output, dependency directories and signing credentials. Application releases follow the versioning, changelog and signing process in the development guide.
+Check your diff before submitting. Exclude unrelated changes, generated build output, dependency directories and signing credentials. Keep `versionName`, `versionCode`, release notes and signing configuration consistent for a release; never commit private signing material.
 
 ## License
 

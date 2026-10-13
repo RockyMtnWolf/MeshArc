@@ -20,6 +20,10 @@ AGENTS.md
 .codex/
 *.hap
 *.app
+/docs/
+/submission/
+/release-artifacts/
+__pycache__/
 
 # Release signing secrets (public .cer certificates may be tracked)
 certs/release/*.p12

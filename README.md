@@ -6,10 +6,10 @@
 
 <img src="AppScope/resources/base/media/app_icon.png" width="96" alt="MeshArc app icon">
 
-**A native Tailscale client for HarmonyOS, with a focus on desktop and advanced network workflows.**
+**A native Tailscale client for HarmonyOS, with FRP support and ClashBox coexistence.**
 
 [![HarmonyOS](https://img.shields.io/badge/HarmonyOS-6.1%20%7C%20API%2023-007DFF?style=for-the-badge)](https://github.com/RockyMtnWolf/MeshArc)
-[![Architecture](https://img.shields.io/badge/Native-OpenHarmony%20arm64-3DA5D9?style=for-the-badge)](docs/development.md)
+[![OpenHarmony arm64](https://img.shields.io/badge/Native-OpenHarmony%20arm64-3DA5D9?style=for-the-badge)](https://github.com/RockyMtnWolf/MeshArc)
 [![License](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg?style=for-the-badge)](LICENSE)
 
 [Source repository](https://github.com/RockyMtnWolf/MeshArc) · [简体中文](README_zh.md)
@@ -18,52 +18,56 @@
 
 ---
 
-MeshArc connects HarmonyOS devices to a Tailscale tailnet. It packages the Tailscale userspace engine as an OpenHarmony arm64 native library and provides a HarmonyOS VPN extension and ArkUI interface.
+MeshArc connects HarmonyOS devices to a Tailscale tailnet using a native VPN extension and the Tailscale userspace engine.
 
 ## Features
 
-- **Tailnet connectivity:** authenticate to Tailscale, inspect device state, and reach peers by Tailscale IP. Approved subnet routes and exit-node selection are available in the client; DNS behavior has limitations below.
-- **File and media workflows:** Taildrop transfer, Taildrive shares, and discovery links for Jellyfin, Emby, Plex, and HosPlayer.
-- **Desktop-oriented tools:** adaptive layouts for phones, tablets, and 2-in-1 devices; ClashBox YAML repair/export with an explicit TCP-only inbound option; and an embedded FRP client with multiple profiles, independent workers, and TOML file import.
-- **Desktop lifecycle:** the window close action uses HarmonyOS `hideAbility` to support tray-resident behavior.
-- **Privacy controls:** optional app access protection and local configuration management.
+- **Tailnet:** device status, approved subnet routes, and exit-node selection.
+- **Transfers and media:** Taildrop, Taildrive, LocalSend discovery, and integrations for Jellyfin, Emby, Plex, and HosPlayer.
+- **Proxy coexistence:** a ClashBox userspace-proxy path with YAML repair/export; the optional inbound policy is TCP-only.
+- **Embedded FRP:** TOML file import, multiple saved profiles, and independent workers. The included FRP v0.52.0 source has local compatibility patches; it is not an unmodified upstream build.
+- **Desktop workflow:** tablet and 2-in-1 layouts, optional access protection, and title-bar close-to-tray behavior.
 
 ## Compatibility
 
-| Item | Current project baseline |
+| Item | Baseline |
 | --- | --- |
 | Platform | HarmonyOS 6.1 compatibility, API 23; compile SDK 26 |
-| Device/native target | arm64; phone, tablet, and 2-in-1 layouts |
-| Tailscale engine | `1.86.5` (pinned) |
-| FRP client | `0.52.0` compatibility fallback (not latest) |
-| OpenHarmony Go | `1.24.5` (project toolchain baseline) |
-| Release bundle ID | `io.github.rockymtnwolf.mesharc` |
+| Native target | arm64; tablet and 2-in-1 layouts |
+| Tailscale | `v1.86.5` |
+| OpenHarmony Go | `1.24.5` |
+| FRP | `v0.52.0` locally patched compatibility build |
+| App version | `1.1.1` · build `100000006` |
+| Bundle ID | `io.github.rockymtnwolf.mesharc` |
 
-The checked-in app configuration now uses the independent MeshArc bundle ID above. This source change does not establish AppGallery availability/approval or release signing. The project source URL is [RockyMtnWolf/MeshArc](https://github.com/RockyMtnWolf/MeshArc); check that repository for publication timing and current availability. MagicDNS is disabled; use Tailscale IP addresses where applicable. Reconnection after device restart may require user action, and HarmonyOS permits only one system VPN service at a time.
+HarmonyOS allows one system VPN service at a time. To use MeshArc alongside ClashBox, enable coexistence in the network settings and follow the app's instructions to repair/export the Clash YAML. Other Clash-based clients have not been broadly tested. MagicDNS is disabled; use Tailscale IP addresses where needed.
 
-## Verification and limitations
+## Tested and limitations
 
-- **Coexistence and peer discovery:** with Clash VPN active, the latest independent HAP's manual transfer refresh showed exactly two online LocalSend peers and no disconnected entries. The home native probe showed three peers as direct, at 84/35/14 ms, without a recovering state. ClashBox coexistence with outbound RDP and inbound USB/IP was also confirmed. These observations do not establish DNS, UDP, subnet-route, all-peer transfer, or general multi-VPN support.
-- **FRP:** the v0.52.0 compatibility HAP built and installed; its existing profile started and the embedded native phase connected to frps. A Windows USB/IP `devlist` request through that single existing mapping returned protocol version `0x111`, command `0x5`, status `0`, and one device. This verifies one tunnel's external protocol response, not physical USB attachment or read/write, nor multiple public tunnels. Sakura-specific mode in the newer v0.51-based INI is not supported by the stock v0.52 client; the original TOML path was the one verified. Do not interpret a `running` worker state alone as public reachability.
-- **FRP import, UI, and short background check:** importing the existing TOML through the system FilePicker preserved the domain, user, TLS flags, and existing port in the form, with no `NoSuchFile`/`ENOENT`; this did not save another profile or request a new port. Visual review of screenshots 51/52/53/66/74 found no mask or footer overlap, evenly enlarged five navigation icons, and a visible TCP protocol label; review of the second mapping page remains in progress. After closing the title-bar window with `hideAbility`, the main window disappeared from the window list while the existing USB/IP mapping continued to answer `devlist` with status 0 and one device, both immediately and after about one minute. This is a short background check, not force-quit or long-duration keepalive evidence.
-- **Core updates:** the current feature checks upstream release metadata and can export a build-request manifest. It does not automatically fetch source, build/sign the core, or install an update on-device. Replacing the engine as a complete HAP upgrade interrupts the VPN; live `.so` replacement is not implemented.
-- **LocalSend:** the described device-side discovery/status scenario is verified; broad interoperability and completed file-transfer coverage remain unverified.
-- **Distribution:** no AppGallery listing is available yet. The root beta HAP for build `100000005` is unsigned and unpublished. An unsigned HAP cannot be normally installed; configure and use your own authorized signing credentials in DevEco Studio. Never publish signing keys or profiles.
+The maintainer has tested MeshArc on a MateBook Pro S, including peer connectivity, RDP, USB/IP, LocalSend discovery, FRP, and background use. These are device-use results, not a claim that every HarmonyOS device or network is issue-free.
 
-Build results, automated tests, device observations, and external-network acceptance are separate evidence. See the [beta verification record](docs/2026-10-13-release-beta1.md) and [engineering checklist](docs/2026-10-13-change-checklist.md).
+FRP is based on locally compatibility-patched v0.52.0. The tested client configuration is TOML; Sakura-specific mode in the newer v0.51-based INI is not supported by stock v0.52.0.
+
+Core Update checks upstream release metadata and exports a build-request manifest; on-device core download, compilation, signing, and installation are not implemented. Replacing the engine with a complete HAP update interrupts the VPN; live `.so` replacement is not implemented.
+
+## Install
+
+Check [GitHub Releases](https://github.com/RockyMtnWolf/MeshArc/releases) for the release package and notes. Release HAPs are unsigned; sign with credentials you are authorized to use before installation. Do not share private keys or provisioning profiles.
+
+The app has been submitted for AppGallery review for PC/2-in-1 devices; it is not listed yet. No AppGallery download URL is available.
 
 ## Build
 
-A fresh clone is **not** a one-command build. Prepare DevEco Studio with the HarmonyOS SDK, the OpenHarmony Go 1.24.5 toolchain, the Tailscale `v1.86.5` source checkout, and local signing configuration. See [development and Windows build instructions](docs/development.md) and [macOS instructions](docs/build-macos.md).
-
-On Windows PowerShell, after preparing those dependencies and copying `build-profile.example.json5` to the ignored local `build-profile.json5`:
+Prepare DevEco Studio and the HarmonyOS SDK, the OpenHarmony Go `1.24.5` toolchain, the Tailscale `v1.86.5` source, and local build/signing configuration. Copy `build-profile.example.json5` to the ignored `build-profile.json5`, configure your own signing settings, then run in Windows PowerShell:
 
 ```powershell
 ./scripts/build.ps1
 ```
 
-## License and attribution
+The repository does not include signing credentials. A build without them produces an unsigned HAP; installation requires a device-accepted signature.
 
-MeshArc source is distributed under the [BSD 3-Clause License](LICENSE). Tailscale-derived code retains its upstream copyright notices and BSD license; third-party dependencies retain their own terms. See [third-party notices](THIRD_PARTY_NOTICES.md) and `LICENSES/` before redistribution.
+## License and credits
 
-Thanks to [Tailscale](https://github.com/tailscale/tailscale), the OpenHarmony Go contributors, and the upstream `flypigJ/Tailscale-OHOS` project. MeshArc is an independent community project and is not affiliated with or endorsed by Tailscale Inc. HarmonyOS and other product names belong to their respective owners.
+MeshArc is licensed under the [BSD 3-Clause License](LICENSE). Tailscale-derived code retains its upstream notices; other components retain their own licenses. See [third-party notices](THIRD_PARTY_NOTICES.md) and the included license texts in `LICENSES/`.
+
+Thanks to [Tailscale](https://github.com/tailscale/tailscale), OpenHarmony Go contributors, and the upstream [flypigJ/Tailscale-OHOS](https://github.com/flypigJ/Tailscale-OHOS) project. MeshArc is an independent community project, not affiliated with or endorsed by Tailscale Inc.

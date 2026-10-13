@@ -101,7 +101,7 @@ export struct FrpProfilesPage {
     if (item.state === 'failed') return '启动失败';
     if (item.state === 'stopping') return '正在停止';
     if (item.state === 'starting' && !item.serviceRunning) return '正在启动';
-    if (item.serviceRunning && item.connectedToFrps) return '已连接 frps，仍需外网验证';
+    if (item.serviceRunning && item.connectedToFrps) return '已连接 frps';
     if (item.serviceRunning) return 'frpc 运行中，正在连接 frps';
     return item.state === 'stopped' ? '已停止' : item.state;
   }
@@ -387,13 +387,14 @@ export struct FrpProfilesPage {
           Row() {
             Column({ space: 4 }) {
               Text('FRP 配置').fontSize(24).fontWeight(FontWeight.Bold)
-              Text('frpc 客户端 · 每份配置可独立运行').fontSize(13).fontColor($r('sys.color.font_secondary'))
+              Text('frpc 客户端 · 每份配置可独立运行；最多保存 32 份配置（不是 32 条隧道）')
+                .fontSize(13).fontColor($r('sys.color.font_secondary'))
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             Button('刷新').id('frp-profiles-refresh').enabled(!this.refreshBusy)
               .onClick(() => this.refreshStatuses())
           }.width('100%')
           Button('+ 添加配置').id('frp-add-profile').width('100%').onClick(() => this.newProfile())
-          Text('公网端口须由 frps 管理员许可。连接 frps 不代表外网映射已验收。')
+          Text('公网端口须由 frps 管理员许可。单份配置可含多条映射，服务商实际隧道数量以套餐为准。')
             .fontSize(12).fontColor($r('sys.color.font_secondary')).width('100%')
           if (this.message.length > 0) Text(this.message).id('frp-profiles-message').fontSize(13)
             .fontColor($r('app.color.status_error')).width('100%')

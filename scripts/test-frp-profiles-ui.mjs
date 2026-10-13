@@ -125,3 +125,12 @@ test('FRP state and errors use theme-aware semantic colors', () => {
   assert.match(page, /\$r\('app\.color\.status_warning'\)/);
   assert.doesNotMatch(page, /Color\.(Green|Red|Orange)/);
 });
+
+test('profile copy distinguishes saved profiles from provider tunnel limits', () => {
+  assert.match(page, /最多保存 32 份配置（不是 32 条隧道）/);
+  assert.match(page, /单份配置可含多条映射，服务商实际隧道数量以套餐为准/);
+  assert.match(page, /公网端口须由 frps 管理员许可/);
+  assert.match(page, /return '已连接 frps'/);
+  assert.doesNotMatch(page, /连接 frps 不代表外网映射已验收/);
+  assert.doesNotMatch(page, /已连接 frps，仍需外网验证/);
+});
