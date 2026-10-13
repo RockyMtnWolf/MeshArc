@@ -62,18 +62,6 @@ On Windows PowerShell, after preparing those dependencies and copying `build-pro
 ./scripts/build.ps1
 ```
 
-The build scripts produce a HAP; installation requires a valid signature accepted by the target device. An unsigned HAP is not a normal installable release package.
-
-## Project details
-
-| Area | Details |
-| --- | --- |
-| Application | MeshArc; developer/owner: 蒋厚斌 |
-| Privacy contact | 1299177969@qq.com |
-| Feedback | smartwolf@stu.xidian.edu.cn |
-| Source home | [RockyMtnWolf/MeshArc](https://github.com/RockyMtnWolf/MeshArc) |
-| Upstream provenance | Derived from [flypigJ/Tailscale-OHOS](https://github.com/flypigJ/Tailscale-OHOS); this project is independently maintained. |
-
 ## License and attribution
 
 MeshArc source is distributed under the [BSD 3-Clause License](LICENSE). Tailscale-derived code retains its upstream copyright notices and BSD license; third-party dependencies retain their own terms. See [third-party notices](THIRD_PARTY_NOTICES.md) and `LICENSES/` before redistribution.
