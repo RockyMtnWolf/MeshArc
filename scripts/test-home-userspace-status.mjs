@@ -20,7 +20,6 @@ ${method('meshConnected')}
 ${method('connectionTitle')}
 ${method('connectionDescription')}
 ${method('connectionColor')}
-${method('localDeviceCardStatus')}
 ${method('peerEffectivelyOnline')}
 ${method('peerCardStatus')}
 ${method('refreshHomeLatency')}
@@ -39,7 +38,8 @@ vm.runInNewContext(javascript, sandbox);
 function fixture({ clashActive, vpnRunning, backendRunning }) {
   const harness = new sandbox.Harness();
   harness.clashUserspaceActive = clashActive;
-  harness.vpnStatus = vpnRunning ? 'state=Running' : 'HarmonyOS VPN Extension Stopped';
+  harness.vpnStatus = vpnRunning ? 'OK | state=Running | tun=true' : 'HarmonyOS VPN Extension Stopped';
+  harness.vpnHeartbeatConfirmed = vpnRunning;
   harness.backendStatus = backendRunning ? 'state=Running' : 'Tailscale Backend Stopped';
   harness.controlServerConfirmed = true;
   harness.accountSummary = { keyExpired: false };
@@ -55,7 +55,7 @@ function fixture({ clashActive, vpnRunning, backendRunning }) {
   return harness;
 }
 
-test('userspace and system VPN modes both display connected only with a running backend', () => {
+test('userspace mode uses its backend while system VPN uses the confirmed extension tunnel', () => {
   assert.match(source, /@StorageLink\('clashUserspaceActive'\)/);
   const userspace = fixture({ clashActive: true, vpnRunning: false, backendRunning: true });
   assert.equal(userspace.isConnected(), false);
@@ -63,30 +63,27 @@ test('userspace and system VPN modes both display connected only with a running 
   assert.equal(userspace.connectionTitle(), 'app.string.connection_connected');
   assert.equal(userspace.connectionDescription(), '用户态共存模式 · 系统 VPN 未启用');
   assert.equal(userspace.connectionColor(), 'app.color.status_success');
-  assert.equal(userspace.localDeviceCardStatus(), 'app.string.connection_connected');
 
   const systemVpn = fixture({ clashActive: false, vpnRunning: true, backendRunning: true });
   assert.equal(systemVpn.isConnected(), true);
   assert.equal(systemVpn.meshConnected(), true);
   assert.equal(systemVpn.connectionTitle(), 'app.string.connection_connected');
   assert.equal(systemVpn.connectionDescription(), '系统 VPN 模式');
-  assert.equal(systemVpn.localDeviceCardStatus(), 'app.string.connection_connected');
 });
 
 test('backend-down and mode-off never report mesh connected or count the local device online', () => {
   const harness = fixture({ clashActive: true, vpnRunning: false, backendRunning: false });
   assert.equal(harness.meshConnected(), false);
   assert.equal(harness.connectionTitle(), 'app.string.connection_disconnected');
-  assert.equal(harness.localDeviceCardStatus(), 'app.string.connection_disconnected');
 
   harness.clashUserspaceActive = false;
   assert.equal(harness.meshConnected(), false);
   assert.equal(harness.isConnected(), false);
 
-  const staleBackend = fixture({ clashActive: false, vpnRunning: true, backendRunning: false });
-  assert.equal(staleBackend.isConnected(), true);
-  assert.equal(staleBackend.meshConnected(), false);
-  assert.equal(staleBackend.connectionTitle(), 'app.string.connection_disconnected');
+  const laggingBackend = fixture({ clashActive: false, vpnRunning: true, backendRunning: false });
+  assert.equal(laggingBackend.isConnected(), true);
+  assert.equal(laggingBackend.meshConnected(), true);
+  assert.equal(laggingBackend.connectionTitle(), 'app.string.connection_connected');
 });
 
 test('online peer presence remains online when path is unprobed, never falsely direct or waiting for VPN', () => {
@@ -145,10 +142,66 @@ test('native userspace status periodically refreshes AppStorage without requirin
 test('system VPN predicate remains tied exclusively to its extension status', () => {
   const harness = fixture({ clashActive: true, vpnRunning: false, backendRunning: true });
   assert.equal(harness.isConnected(), false);
-  harness.vpnStatus = 'state=Running';
+  harness.vpnStatus = 'OK | state=Running | tun=true';
+  harness.vpnHeartbeatConfirmed = true;
   harness.backendStatus = 'Tailscale Backend Stopped';
   assert.equal(harness.isConnected(), true);
   assert.equal(harness.meshConnected(), false);
+});
+
+test('backend Running alone is not system VPN, and extension confirmation requires a live heartbeat and TUN', () => {
+  const backendOnly = fixture({ clashActive: false, vpnRunning: false, backendRunning: true });
+  backendOnly.vpnStatus = 'OK | state=Running | tun=true';
+  backendOnly.vpnHeartbeatConfirmed = false;
+  assert.equal(backendOnly.isConnected(), false);
+  assert.equal(backendOnly.meshConnected(), false);
+
+  const missingTun = fixture({ clashActive: false, vpnRunning: true, backendRunning: true });
+  missingTun.vpnStatus = 'OK | state=Running | tun=false';
+  assert.equal(missingTun.isConnected(), false);
+  assert.equal(missingTun.meshConnected(), false);
+});
+
+test('local device card passes one reactive state object to dot, label, and font', () => {
+  const localRowStart = source.indexOf('private LocalDeviceRow($$: LocalDeviceConnectionState)');
+  const localRowEnd = source.indexOf('\n  @Builder', localRowStart + 1);
+  const localRow = source.slice(localRowStart, localRowEnd);
+  assert.match(localRow,
+    /backgroundColor\(\$\$\.connected \? \$r\('app\.color\.status_success'\) :\s*\$r\('sys\.color\.icon_secondary'\)\)/);
+  assert.match(localRow,
+    /Text\(\$\$\.connected \? \$r\('app\.string\.connection_connected'\) :\s*\$r\('app\.string\.connection_disconnected'\)\)/);
+  assert.match(localRow, /fontColor\(\$\$\.connected \? \$r\('app\.color\.status_success'\)/);
+  assert.doesNotMatch(localRow, /this\.meshConnected\(\)/);
+
+  const panelStart = source.indexOf('private DevicesPanel()');
+  const panelEnd = source.indexOf('\n  @Builder', panelStart + 1);
+  const panel = source.slice(panelStart, panelEnd);
+  assert.match(panel, /this\.LocalDeviceRow\(\{\s*connected:\s*this\.clashUserspaceActive\s*\?/);
+  assert.match(panel,
+    /this\.backendStatus\.includes\('state=Running'\)[\s\S]*this\.vpnHeartbeatConfirmed && this\.vpnStatus\.includes\('state=Running'\) &&\s*this\.vpnStatus\.includes\('tun=true'\)/);
+  assert.doesNotMatch(panel, /const\s+\w+\s*=\s*this\.clashUserspaceActive/);
+  assert.doesNotMatch(localRow, /localDeviceCardStatus\(/);
+});
+
+test('first heartbeat confirmation invalidates an initially disconnected local card', () => {
+  assert.match(source, /@State private vpnHeartbeatConfirmed: boolean = false;/);
+  const harness = fixture({ clashActive: false, vpnRunning: true, backendRunning: false });
+  let confirmed = false;
+  const dependencies = new Set();
+  Object.defineProperty(harness, 'vpnHeartbeatConfirmed', {
+    get() {
+      dependencies.add('vpnHeartbeatConfirmed');
+      return confirmed;
+    }
+  });
+  assert.equal(harness.meshConnected(), false);
+  assert.ok(dependencies.has('vpnHeartbeatConfirmed'));
+  confirmed = true;
+  assert.equal(harness.meshConnected(), true);
+  assert.equal(harness.connectionTitle(), 'app.string.connection_connected');
+  confirmed = false;
+  assert.equal(harness.meshConnected(), false);
+  assert.equal(harness.connectionTitle(), 'app.string.connection_disconnected');
 });
 
 test('update-log popup and settings entry are absent while core update actions remain', () => {

@@ -125,6 +125,10 @@ import {
 import { AppSecurityPreferences, AppSecuritySettings } from '../services/AppSecurityPreferences';
 import { AppSecurityAuthenticator } from '../services/AppSecurityAuthenticator';
 
+interface LocalDeviceConnectionState {
+  connected: boolean;
+}
+
 interface LocalSendAppTarget {
   bundleName: string;
   moduleName: string;
@@ -786,7 +790,7 @@ export struct BridgeStatus {
   private vpnStatusGraceActive: boolean = false;
   private vpnHeartbeatObservationStartedAtMs: number = 0;
   private vpnHeartbeatBaselineMs: number = 0;
-  private vpnHeartbeatConfirmed: boolean = false;
+  @State private vpnHeartbeatConfirmed: boolean = false;
   private vpnStopPollTimer: number = -1;
   private vpnStopRequestId: number = 0;
   private peerSnapshotSignature: string = '';
@@ -4141,12 +4145,15 @@ export struct BridgeStatus {
   }
 
   private isConnected(): boolean {
-    return this.vpnStatus.includes('state=Running');
+    return this.vpnHeartbeatConfirmed && this.vpnStatus.includes('state=Running') &&
+      this.vpnStatus.includes('tun=true');
   }
 
   private meshConnected(): boolean {
-    return this.backendStatus.includes('state=Running') &&
-      (this.isConnected() || this.clashUserspaceActive);
+    if (this.clashUserspaceActive) {
+      return this.backendStatus.includes('state=Running');
+    }
+    return this.isConnected();
   }
 
   private isConnecting(): boolean {
@@ -5260,12 +5267,6 @@ export struct BridgeStatus {
       return $r('app.string.device_path_unreachable');
     }
     return $r('app.string.peer_online');
-  }
-
-  private localDeviceCardStatus(): ResourceStr {
-    return this.meshConnected()
-      ? $r('app.string.connection_connected')
-      : $r('app.string.connection_disconnected');
   }
 
   private peerCardStatus(peer: PeerSummary): ResourceStr {
@@ -10372,7 +10373,7 @@ export struct BridgeStatus {
   }
 
   @Builder
-  private LocalDeviceRow() {
+  private LocalDeviceRow($$: LocalDeviceConnectionState) {
     Row({ space: 10 }) {
       Stack({ alignContent: Alignment.Center }) {
         Image(this.localDeviceIcon())
@@ -10385,7 +10386,8 @@ export struct BridgeStatus {
           .height(8)
           .borderRadius(4)
           .border({ width: 2, color: this.groupBackground() })
-          .backgroundColor(this.connectionColor())
+          .backgroundColor($$.connected ? $r('app.color.status_success') :
+            $r('sys.color.icon_secondary'))
           .position({ x: 21, y: 21 })
       }
       .width(36)
@@ -10415,9 +10417,10 @@ export struct BridgeStatus {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
-          Text(this.localDeviceCardStatus())
+          Text($$.connected ? $r('app.string.connection_connected') :
+            $r('app.string.connection_disconnected'))
             .fontSize(12)
-            .fontColor(this.meshConnected() ? $r('app.color.status_success') :
+            .fontColor($$.connected ? $r('app.color.status_success') :
               $r('sys.color.font_secondary'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -10705,7 +10708,10 @@ export struct BridgeStatus {
         .accessibilityLevel('no')
 
       this.DeviceGroupLabel($r('app.string.device_group_local'))
-      this.LocalDeviceRow()
+      this.LocalDeviceRow({ connected: this.clashUserspaceActive
+        ? this.backendStatus.includes('state=Running')
+        : this.vpnHeartbeatConfirmed && this.vpnStatus.includes('state=Running') &&
+          this.vpnStatus.includes('tun=true') })
 
       if (this.homeOnlinePeers().length > 0) {
         this.DeviceGroupLabel($r('app.string.device_group_online'))
@@ -13799,6 +13805,7 @@ export struct BridgeStatus {
     }
       .width('100%')
       .height('100%')
+      .backgroundColor($r('sys.color.background_secondary'))
   }
 
   @Builder
@@ -14988,7 +14995,7 @@ export struct BridgeStatus {
           dragBar: true,
           showClose: false,
           enableOutsideInteractive: false,
-          backgroundColor: this.pageCanvasBackground(),
+          backgroundColor: $r('sys.color.background_secondary'),
           onDisappear: () => {
             this.nativeSettingsVisible = false;
           }

@@ -1,12 +1,17 @@
 import { common } from '@kit.AbilityKit';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
 
-export type BackgroundKeepaliveMode = 'off' | 'download' | 'audio';
+export type BackgroundKeepaliveMode = 'off' | 'download' | 'taskKeeping';
 
 const STORE_NAME: string = 'mesh_arc_background_keepalive';
 const MODE_KEY: string = 'selected_mode';
 
 export class BackgroundKeepalivePreferences {
+  static supportsTaskKeeping(): boolean {
+    return deviceInfo.deviceType === deviceInfo.DeviceTypes.TYPE_2IN1;
+  }
+
   static async load(context: common.Context): Promise<BackgroundKeepaliveMode> {
     try {
       const store = await preferences.getPreferences(context, STORE_NAME);
@@ -29,8 +34,11 @@ export class BackgroundKeepalivePreferences {
   }
 
   private static normalize(mode: string): BackgroundKeepaliveMode {
-    if (mode === 'download' || mode === 'audio') {
+    if (mode === 'download') {
       return mode;
+    }
+    if (mode === 'taskKeeping' || mode === 'audio') {
+      return BackgroundKeepalivePreferences.supportsTaskKeeping() ? 'taskKeeping' : 'off';
     }
     return 'off';
   }

@@ -1,6 +1,6 @@
 import { common, wantAgent, WantAgent } from '@kit.AbilityKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -24,7 +24,7 @@ interface VpnRuntimeStatus {
   rxBytes: number;
 }
 
-export type BackgroundKeepaliveTaskMode = 'off' | 'download' | 'audio';
+export type BackgroundKeepaliveTaskMode = 'off' | 'download' | 'taskKeeping';
 
 export interface BackgroundTaskModeState {
   selectedMode: BackgroundKeepaliveTaskMode;
@@ -57,6 +57,10 @@ export class VpnBackgroundTaskManager {
   private lastOperationError: string = '';
 
   async setKeepaliveMode(mode: BackgroundKeepaliveTaskMode): Promise<BackgroundTaskModeState> {
+    if (mode === 'taskKeeping' && deviceInfo.deviceType !== deviceInfo.DeviceTypes.TYPE_2IN1) {
+      this.lastOperationError = '任务维持仅支持 PC/2-in-1；当前设备不支持，应用不会申请系统 ACL 权限。';
+      return this.getKeepaliveTaskState();
+    }
     this.keepaliveMode = mode;
     this.lastOperationError = '';
     if (this.context !== undefined) {
@@ -229,7 +233,7 @@ export class VpnBackgroundTaskManager {
         await this.start(context, generation);
       }
       if (this.monitoring && generation === this.lifecycleGeneration && this.task !== undefined &&
-        this.activeModes.includes('dataTransfer')) {
+        this.activeModes.includes('dataTransfer') && this.keepaliveMode !== 'taskKeeping') {
         await this.updateNotification(context, status);
       }
     } catch (error) {
@@ -279,8 +283,8 @@ export class VpnBackgroundTaskManager {
     }
     this.nextNotificationAtMs = 0;
     this.record('background_started');
-    hilog.info(DOMAIN, TAG, 'VPN DATA_TRANSFER background task started. id=%{public}d',
-      task.continuousTaskId ?? -1);
+    hilog.info(DOMAIN, TAG, 'Background task started. modes=%{public}s id=%{public}d',
+      this.activeModes.join(','), task.continuousTaskId ?? -1);
   }
 
   private async updateTaskModes(context: common.UIAbilityContext, modes: string[]): Promise<void> {
@@ -297,8 +301,8 @@ export class VpnBackgroundTaskManager {
     if (status.state === 'connected' || this.keepaliveMode === 'download' || this.frpActive || this.userspaceActive) {
       modes.push('dataTransfer');
     }
-    if (this.keepaliveMode === 'audio') {
-      modes.push('audioPlayback');
+    if (this.keepaliveMode === 'taskKeeping' && deviceInfo.deviceType === deviceInfo.DeviceTypes.TYPE_2IN1) {
+      modes.push('taskKeeping');
     }
     return modes;
   }

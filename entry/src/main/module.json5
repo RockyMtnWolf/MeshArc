@@ -24,7 +24,7 @@
         "exported": true,
         "backgroundModes": [
           "dataTransfer",
-          "audioPlayback"
+          "taskKeeping"
         ],
         "skills": [
           {

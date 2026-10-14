@@ -80,8 +80,8 @@ export struct NativeSettingsNavigation {
     }
   }
 
-  private modalTitleBar(title: ResourceStr): HdsNavigationTitleBarOptions {
-    return {
+  private modalTitleBar(title: ResourceStr, opaqueBackground: boolean = false): HdsNavigationTitleBarOptions {
+    const options: HdsNavigationTitleBarOptions = {
       enableComponentSafeArea: true,
       content: {
         title: { mainTitle: title },
@@ -106,6 +106,15 @@ export struct NativeSettingsNavigation {
         }
       }
     };
+    if (opaqueBackground) {
+      options.style = {
+        blurStrategy: BlurStrategy.DISABLE,
+        scrollEffectOpts: { enableScrollEffect: false },
+        originalStyle: { backgroundStyle: { backgroundColor: $r('sys.color.background_secondary') } },
+        scrollEffectStyle: { backgroundStyle: { backgroundColor: $r('sys.color.background_secondary') } }
+      };
+    }
+    return options;
   }
 
   private materialLabel(): ResourceStr {
@@ -837,7 +846,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor(Color.Transparent)
+      .backgroundColor($r('sys.color.background_secondary'))
   }
 
   @Builder
@@ -902,7 +911,7 @@ export struct NativeSettingsNavigation {
     }
       .width('100%')
       .height('100%')
-      .backgroundColor(Color.Transparent)
+      .backgroundColor($r('sys.color.background_secondary'))
   }
 
   @Builder
@@ -1042,19 +1051,19 @@ export struct NativeSettingsNavigation {
         this.BackgroundPage()
       }
         .titleMode(HdsNavDestinationTitleMode.MODAL)
-        .titleBar(this.modalTitleBar($r('app.string.native_settings_background_material')))
+        .titleBar(this.modalTitleBar($r('app.string.native_settings_background_material'), true))
         .hideBackButton(true)
         .bindToScrollable([this.pageScroller])
-        .backgroundColor(Color.Transparent)
+        .backgroundColor($r('sys.color.background_secondary'))
     } else if (name === 'animation') {
       HdsNavDestination() {
         this.AnimationPage()
       }
         .titleMode(HdsNavDestinationTitleMode.MODAL)
-        .titleBar(this.modalTitleBar($r('app.string.native_settings_animation')))
+        .titleBar(this.modalTitleBar($r('app.string.native_settings_animation'), true))
         .hideBackButton(true)
         .bindToScrollable([this.pageScroller])
-        .backgroundColor(Color.Transparent)
+        .backgroundColor($r('sys.color.background_secondary'))
     } else if (name === 'storage') {
       HdsNavDestination() {
         this.StoragePage()
@@ -1079,11 +1088,11 @@ export struct NativeSettingsNavigation {
       .mode(NavigationMode.Stack)
       .titleBar(this.modalTitleBar(this.pageName === 'animation' ?
         $r('app.string.native_settings_animation') :
-        $r('app.string.native_settings_background_material')))
+        $r('app.string.native_settings_background_material'), true))
       .hideBackButton(true)
       .width('100%')
       .height('100%')
-      .backgroundColor(Color.Transparent)
+      .backgroundColor($r('sys.color.background_secondary'))
       .id(this.pageName === 'animation' ?
         'native-animation-settings' : 'native-background-material-settings')
   }

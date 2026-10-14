@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { BackgroundKeepaliveMode } from '../services/BackgroundKeepalivePreferences';
+import { BackgroundKeepaliveMode, BackgroundKeepalivePreferences } from '../services/BackgroundKeepalivePreferences';
 import { sharedBackgroundKeepaliveController } from '../services/BackgroundKeepaliveController';
 
 @Component
@@ -87,7 +87,12 @@ export struct BackgroundKeepaliveSettings {
         .fontSize(12).fontColor($r('sys.color.font_secondary'))
       this.ModeOption('download', '模拟下载', '使用长时数据传输任务；不下载文件、不产生虚假进度或网络请求。')
       Divider()
-      this.ModeOption('audio', '低音量旋律', '明确开启后循环播放本地原创旋律，音量较低但可闻；可能耗电并打断其他音频。')
+      if (BackgroundKeepalivePreferences.supportsTaskKeeping()) {
+        this.ModeOption('taskKeeping', '系统任务维持', '仅 PC/2-in-1 可用。使用系统任务维持类别；会耗电，系统仍可能结束任务。')
+      } else {
+        Text('系统任务维持仅支持 PC/2-in-1；手机和平板需要系统 ACL 授权，本应用不会申请。可选择模拟下载任务。')
+          .fontSize(12).fontColor($r('sys.color.font_secondary'))
+      }
       if (this.status.length > 0) {
         Text(this.status).fontSize(12).fontColor($r('sys.color.font_secondary'))
           .id('background-keepalive-status')

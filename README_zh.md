@@ -37,7 +37,7 @@ MeshArc 通过 HarmonyOS 原生 VPN 扩展和 Tailscale 用户态引擎，将设
 | Tailscale | `v1.86.5` |
 | OpenHarmony Go | `1.24.5` |
 | FRP | 本地兼容补丁版 `v0.52.0` |
-| 应用版本 | `1.1.1` · build `100000006` |
+| 应用版本 | `1.1.2` · build `100000007` |
 | Bundle ID | `io.github.rockymtnwolf.mesharc` |
 
 HarmonyOS 同一时刻只允许一个系统 VPN 服务。若要与 ClashBox 共存，请在网络设置中开启共存，并按应用提示修复/导出 Clash YAML。其他 Clash 类应用尚未广泛测试。MagicDNS 未启用；需要时请使用 Tailscale IP。
@@ -49,6 +49,8 @@ HarmonyOS 同一时刻只允许一个系统 VPN 服务。若要与 ClashBox 共�
 FRP 基于本地兼容补丁版 v0.52.0；已测试的是 TOML 配置。stock v0.52.0 不支持 Sakura 新版 v0.51 INI 的专有模式。
 
 内核更新目前只能检查上游发行信息并导出构建请求清单；端侧拉取源码、编译、签名和安装尚未实现。完整 HAP 更新会中断 VPN，尚不支持 `.so` 热替换。
+
+可选后台任务维持仅在 PC/二合一设备启用，替代原音频保活，不播放音频；其他设备不申请对应受限系统权限。后台模式不能保证应用永远不会被系统终止。
 
 ## 安装
 

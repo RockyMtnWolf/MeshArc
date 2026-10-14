@@ -20,6 +20,22 @@ export interface ReleaseChangelogDefinition {
 
 export const RELEASE_CHANGELOG_ENTRIES: ReleaseChangelogDefinition[] = [
   {
+    versionName: '1.1.2',
+    versionCode: 100000007,
+    releaseDateZh: '2026年10月14日',
+    releaseDateEn: 'October 14, 2026',
+    changesZh: [
+      '修复系统 VPN 连接状态误判，并同步首页与本机卡片的连接状态显示',
+      '将音频保活替换为 PC/二合一设备的系统任务维持，迁移旧音频选项，不再播放保活音频',
+      '背景图和动效设置弹窗（含顶部拖拽区）改用跟随系统深浅色的默认不透明背景'
+    ],
+    changesEn: [
+      'Use confirmed VPN extension state and keep Home and local-device connection indicators synchronized',
+      'Replace audio keepalive with system task keeping on PC/2-in-1 devices and migrate the previous option without playing audio',
+      'Use opaque system-themed backgrounds for wallpaper and animation settings, including the sheet drag-bar area'
+    ]
+  },
+  {
     versionName: '1.1.1-dev',
     versionCode: 100000004,
     releaseDateZh: '2026年10月13日（开发测试版）',

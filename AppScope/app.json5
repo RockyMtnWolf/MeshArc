@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "io.github.rockymtnwolf.mesharc",
     "vendor": "蒋厚斌",
-    "versionCode": 100000006,
-    "versionName": "1.1.1",
+    "versionCode": 100000007,
+    "versionName": "1.1.2",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

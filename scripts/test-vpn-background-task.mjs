@@ -16,15 +16,16 @@ function deferred() {
   return { promise, resolve };
 }
 
-function fixture() {
+function fixture(options = {}) {
   const f = {
     now: 1000000, status: '', starts: [], updates: [], stops: 0, notifications: [], events: [],
     callbacks: new Map(), startGate: null, publishGate: null, startError: null,
-    stopGate: null, readError: false
+    stopGate: null, readError: false, deviceType: options.deviceType ?? '2in1'
   };
   const context = { filesDir: '/files', resourceManager: { getStringByNameSync: () => 'VPN connected' } };
   const sandbox = {
     Date: { now: () => f.now }, setInterval: () => 1, clearInterval: () => {},
+    deviceInfo: { deviceType: f.deviceType, DeviceTypes: { TYPE_2IN1: '2in1' } },
     wantAgent: { OperationType: { START_ABILITY: 1 }, WantAgentFlags: { UPDATE_PRESENT_FLAG: 1 },
       getWantAgent: async () => ({}) },
     backgroundTaskManager: {
@@ -194,25 +195,39 @@ test('download mode may request dataTransfer while VPN is disconnected without f
   assert.equal(f.stops, 1);
 });
 
-test('audio mode uses audioPlayback and preserves connected VPN dataTransfer in the shared task', async () => {
+test('taskKeeping preserves connected VPN dataTransfer without publishing a simulated download template', async () => {
   const f = fixture(); await f.start();
-  const state = await f.manager.setKeepaliveMode('audio'); await flush();
+  const notificationCount = f.notifications.length;
+  const state = await f.manager.setKeepaliveMode('taskKeeping'); await flush();
   assert.equal(JSON.stringify(f.starts), JSON.stringify([['dataTransfer']]));
-  assert.equal(JSON.stringify(f.updates), JSON.stringify([['dataTransfer', 'audioPlayback']]));
+  assert.equal(JSON.stringify(f.updates), JSON.stringify([['dataTransfer', 'taskKeeping']]));
   assert.equal(state.taskActive, true);
   assert.equal(f.stops, 0);
+  assert.equal(f.notifications.length, notificationCount);
   await f.manager.setKeepaliveMode('off'); await flush();
   assert.equal(JSON.stringify(f.updates.at(-1)), JSON.stringify(['dataTransfer']));
   assert.equal(f.stops, 0);
 });
 
-test('audio-only mode starts an audioPlayback task without requiring VPN connectivity', async () => {
+test('taskKeeping-only mode uses the system task notification without live-view template', async () => {
   const f = fixture(); f.disconnected(); f.manager.register(f.context); await flush();
-  const state = await f.manager.setKeepaliveMode('audio'); await flush();
-  assert.deepEqual(JSON.parse(JSON.stringify(f.starts)), [['audioPlayback']]);
+  const state = await f.manager.setKeepaliveMode('taskKeeping'); await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.starts)), [['taskKeeping']]);
   assert.equal(state.taskActive, true);
   assert.equal(f.notifications.length, 0);
   assert.equal(f.stops, 0);
+});
+
+test('non-PC taskKeeping is refused while download mode remains available', async () => {
+  const f = fixture({ deviceType: 'phone' }); f.disconnected(); f.manager.register(f.context); await flush();
+  const refused = await f.manager.setKeepaliveMode('taskKeeping'); await flush();
+  assert.equal(refused.taskActive, false);
+  assert.match(refused.error, /PC\/2-in-1/);
+  assert.equal(f.starts.length, 0);
+  const download = await f.manager.setKeepaliveMode('download'); await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.starts)), [['dataTransfer']]);
+  assert.equal(download.selectedMode, 'download');
+  assert.equal(download.taskActive, true);
 });
 
 test('FRP and userspace owners are independent and onDestroy retains their shared task', async () => {

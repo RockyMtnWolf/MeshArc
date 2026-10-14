@@ -75,10 +75,29 @@ test('background material and animation settings share stack-mode navigation', (
   const settingsNavigationSource = readFileSync(new URL('../entry/src/main/ets/components/NativeSettingsNavigation.ets', import.meta.url), 'utf8');
   assert.match(settingsNavigationSource, /\.titleMode\(HdsNavigationTitleMode\.MODAL\)\s*\.mode\(NavigationMode\.Stack\)/);
   assert.doesNotMatch(settingsNavigationSource, /BackgroundPreviewCard|native-settings-background-preview/);
-  assert.match(settingsNavigationSource, /private BackgroundPage\(\): void \{[\s\S]*?\.backgroundColor\(Color\.Transparent\)/);
+  const backgroundPageStart = settingsNavigationSource.indexOf('  private BackgroundPage()');
+  const backgroundPageEnd = settingsNavigationSource.indexOf('\n  @Builder', backgroundPageStart);
+  const backgroundPage = settingsNavigationSource.slice(backgroundPageStart, backgroundPageEnd);
+  assert.match(backgroundPage, /\.backgroundColor\(\$r\('sys\.color\.background_secondary'\)\)/);
+  assert.match(settingsNavigationSource, /originalStyle: \{ backgroundStyle: \{ backgroundColor: \$r\('sys\.color\.background_secondary'\) \} \}/);
+  const animationPageStart = settingsNavigationSource.indexOf('  private AnimationPage()');
+  const animationPageEnd = settingsNavigationSource.indexOf('\n  @Builder', animationPageStart + 1);
+  assert.match(settingsNavigationSource.slice(animationPageStart, animationPageEnd), /\.backgroundColor\(\$r\('sys\.color\.background_secondary'\)\)/);
+  assert.match(settingsNavigationSource, /native_settings_animation'\), true\)/);
   const buildStart = settingsNavigationSource.indexOf('  build() {');
   const buildBody = settingsNavigationSource.slice(buildStart);
   assert.match(buildBody, /if \(this\.pageName === 'animation'\) \{\s*this\.AnimationPage\(\)\s*\} else \{\s*this\.BackgroundPage\(\)/);
+  assert.match(buildBody, /\.backgroundColor\(\$r\('sys\.color\.background_secondary'\)\)/);
+});
+
+test('native settings sheet paints the system-colored drag bar and rounded shell', () => {
+  const sheetStart = source.indexOf('.bindSheet($$this.nativeSettingsVisible');
+  const sheetEnd = source.indexOf('onDisappear:', sheetStart);
+  assert.match(source.slice(sheetStart, sheetEnd), /backgroundColor: \$r\('sys\.color\.background_secondary'\)/);
+  assert.doesNotMatch(source.slice(sheetStart, sheetEnd), /backgroundColor: this\.pageCanvasBackground\(\)/);
+  const contentStart = source.indexOf('  private NativeSettingsSheetContent()');
+  const contentEnd = source.indexOf('\n  @Builder', contentStart + 1);
+  assert.match(source.slice(contentStart, contentEnd), /\.backgroundColor\(\$r\('sys\.color\.background_secondary'\)\)/);
 });
 
 test('release notes describe implemented simulated keepalive behavior accurately', () => {

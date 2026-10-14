@@ -37,7 +37,7 @@ MeshArc connects HarmonyOS devices to a Tailscale tailnet using a native VPN ext
 | Tailscale | `v1.86.5` |
 | OpenHarmony Go | `1.24.5` |
 | FRP | `v0.52.0` locally patched compatibility build |
-| App version | `1.1.1` · build `100000006` |
+| App version | `1.1.2` · build `100000007` |
 | Bundle ID | `io.github.rockymtnwolf.mesharc` |
 
 HarmonyOS allows one system VPN service at a time. To use MeshArc alongside ClashBox, enable coexistence in the network settings and follow the app's instructions to repair/export the Clash YAML. Other Clash-based clients have not been broadly tested. MagicDNS is disabled; use Tailscale IP addresses where needed.
@@ -49,6 +49,8 @@ The maintainer has tested MeshArc on a MateBook Pro S, including peer connectivi
 FRP is based on locally compatibility-patched v0.52.0. The tested client configuration is TOML; Sakura-specific mode in the newer v0.51-based INI is not supported by stock v0.52.0.
 
 Core Update checks upstream release metadata and exports a build-request manifest; on-device core download, compilation, signing, and installation are not implemented. Replacing the engine with a complete HAP update interrupts the VPN; live `.so` replacement is not implemented.
+
+Optional background task keeping is available on PC/2-in-1 devices; it replaces the previous audio keepalive and does not play audio. Other device types do not request its restricted system permission. Background modes do not guarantee that the system will never terminate the app.
 
 ## Install
 
