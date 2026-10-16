@@ -5779,7 +5779,7 @@ export struct BridgeStatus {
       if (!manual) {
         return;
       }
-      this.showToast('请先连接 MeshArc，并确认目标设备在线');
+      this.showToast('请先连接 TunnelArk，并确认目标设备在线');
       return;
     }
     this.ensureStreamingServices();
@@ -6092,7 +6092,7 @@ export struct BridgeStatus {
 
   private detectMediaForPeer(peer: PeerSummary, force: boolean): void {
     if (!this.peerEffectivelyOnline(peer) || peer.addresses.length === 0 || !this.meshConnected()) {
-      this.showToast('请先连接 MeshArc，并确认目标设备在线');
+      this.showToast('请先连接 TunnelArk，并确认目标设备在线');
       return;
     }
     this.ensureMediaServices();
@@ -6212,7 +6212,7 @@ export struct BridgeStatus {
 
   private launchRemoteStream(peer: PeerSummary): void {
     if (!this.isConnected()) {
-      this.showToast('请先连接 MeshArc，再使用远程串流');
+      this.showToast('请先连接 TunnelArk，再使用远程串流');
       return;
     }
     if (!this.peerEffectivelyOnline(peer)) {
@@ -6270,7 +6270,7 @@ export struct BridgeStatus {
   private showDerpStreamConfirmation(peer: PeerSummary, state: DeviceStreamingState): void {
     this.getUIContext().showAlertDialog({
       title: '当前通过 DERP 中继连接',
-      message: '中继连接可能导致延迟升高或画面卡顿，MeshArc 将建议 MoonlightOH 使用较低码率',
+      message: '中继连接可能导致延迟升高或画面卡顿，TunnelArk 将建议 MoonlightOH 使用较低码率',
       autoCancel: true,
       primaryButton: { value: '使用兼容配置', action: () => this.openMoonlight(peer, state, false) },
       secondaryButton: { value: '使用原有配置', action: () => this.openMoonlight(peer, state, true) }
@@ -6287,7 +6287,7 @@ export struct BridgeStatus {
           undefined, undefined, undefined, false));
         this.getUIContext().showAlertDialog({
           title: '需要 MoonlightOH',
-          message: 'MeshArc 使用 MoonlightOH 连接 Sunshine 串流服务',
+          message: 'TunnelArk 使用 MoonlightOH 连接 Sunshine 串流服务',
           autoCancel: true,
           primaryButton: { value: '取消', action: () => {} },
           secondaryButton: { value: '复制主机地址', action: () => this.copyDeviceValue(host, $r('app.string.peer_ip_copied')) }

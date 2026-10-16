@@ -1,1 +1,2 @@
 scripts/*.sh text eol=lf
+patches/*.patch whitespace=-blank-at-eol,-space-before-tab

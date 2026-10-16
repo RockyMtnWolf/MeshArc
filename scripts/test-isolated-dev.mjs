@@ -23,13 +23,13 @@ function createFixture(t, sourceBundleName = 'io.github.tailscaleohos') {
   mkdirSync(path.join(source, 'scripts'), { recursive: true });
   writeFileSync(path.join(source, 'scripts', 'prepare-isolated-dev.ps1'), readFileSync(scriptPath));
   writeFixtureFile(source, 'AppScope/app.json5', `{"app":{"bundleName":"${sourceBundleName}","label":"$string:app_name"}}\n`);
-  writeFixtureFile(source, 'AppScope/resources/base/element/string.json', '{"string":[{"name":"app_name","value":"MeshArc"}]}\n');
+  writeFixtureFile(source, 'AppScope/resources/base/element/string.json', '{"string":[{"name":"app_name","value":"TunnelArk"}]}\n');
   writeFixtureFile(source, 'entry/src/main/resources/base/element/string.json',
-    '{"string":[{"name":"entryability_label","value":"MeshArc"},{"name":"preserved","value":"Keep me"}]}\n');
+    '{"string":[{"name":"entryability_label","value":"TunnelArk"},{"name":"preserved","value":"Keep me"}]}\n');
   writeFixtureFile(source, 'entry/src/main/resources/zh_CN/element/string.json',
-    '{\n  "string": [\n    { "name": "entryability_label", "value": "MeshArc" },\n    { "name": "preserved", "value": "原样保留" }\n  ]\n}\n');
+    '{\n  "string": [\n    { "name": "entryability_label", "value": "TunnelArk" },\n    { "name": "preserved", "value": "原样保留" }\n  ]\n}\n');
   writeFixtureFile(source, 'entry/src/main/resources/en_US/element/string.json',
-    '{"string":[{"name":"entryability_label","value":"MeshArc"},{"name":"preserved","value":"Keep it"}]}\n');
+    '{"string":[{"name":"entryability_label","value":"TunnelArk"},{"name":"preserved","value":"Keep it"}]}\n');
   writeFixtureFile(source, 'build-profile.example.json5', '{"app":{"signingConfigs":[]}}\n');
   for (const [file, value] of [
     ['one.ets', `const BUNDLE_NAME = '${sourceBundleName}';\n`],
@@ -75,10 +75,10 @@ test('copies tracked files to a separate dev identity without repository metadat
   assert.match(result.stdout + result.stderr, /Native dependencies/i);
   assert.equal(JSON.parse(readFileSync(path.join(target, 'AppScope/app.json5'), 'utf8')).app.bundleName,
     'io.github.tailscaleohos.devtest');
-  assert.match(readFileSync(path.join(target, 'AppScope/resources/base/element/string.json'), 'utf8'), /MeshArc Dev Test/);
+  assert.match(readFileSync(path.join(target, 'AppScope/resources/base/element/string.json'), 'utf8'), /TunnelArk Dev Test/);
   for (const locale of ['base', 'zh_CN']) {
     const strings = JSON.parse(readFileSync(path.join(target, `entry/src/main/resources/${locale}/element/string.json`), 'utf8'));
-    assert.equal(strings.string.find(item => item.name === 'entryability_label').value, 'MeshArc Dev Test');
+    assert.equal(strings.string.find(item => item.name === 'entryability_label').value, 'TunnelArk Dev Test');
     assert.equal(strings.string.find(item => item.name === 'preserved').value, locale === 'base' ? 'Keep me' : '原样保留');
   }
   assert.equal(readFileSync(path.join(target, 'build-profile.json5'), 'utf8'),
@@ -128,7 +128,7 @@ test('copies only explicitly listed untracked source and resource files', t => {
   assert.equal(readFileSync(path.join(target, 'entry/src/main/resources/base/element/tray.json'), 'utf8'),
     '{"string":[]}\n');
   const enStrings = JSON.parse(readFileSync(path.join(target, 'entry/src/main/resources/en_US/element/string.json'), 'utf8'));
-  assert.equal(enStrings.string.find(item => item.name === 'entryability_label').value, 'MeshArc Dev Test');
+  assert.equal(enStrings.string.find(item => item.name === 'entryability_label').value, 'TunnelArk Dev Test');
   assert.equal(enStrings.string.find(item => item.name === 'preserved').value, 'Keep it');
   assert.equal(existsSync(path.join(target, 'untracked.txt')), false);
 });

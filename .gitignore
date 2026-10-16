@@ -1,5 +1,6 @@
 .idea/
 .hvigor/
+.cache/
 node_modules/
 oh_modules/
 .tooling/

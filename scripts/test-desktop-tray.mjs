@@ -164,6 +164,9 @@ test('registers the status bar item and releases it on dispose', async () => {
   assert.equal(state.sources.length, 2);
   assert.ok(state.sources.every((source) => source.released === 1));
   assert.equal(state.addedItems[0].quickOperation.abilityName, 'MeshArcStatusBarAbility');
+  assert.equal(state.addedItems[0].quickOperation.title, 'TunnelArk');
+  assert.equal(state.addedItems[0].statusBarGroupMenu[0][0].title, '打开 TunnelArk');
+  assert.equal(state.addedItems[0].hoverTips, 'TunnelArk');
   assert.equal(state.addedItems[0].statusBarGroupMenu[0][0].menuAction.abilityName, 'EntryAbility');
 
   state.service.dispose(state.context);
@@ -211,6 +214,8 @@ test('wires tray lifecycle, extension page, bundle identity, and module metadata
   assert.doesNotMatch(extensionAbility, /loadContent\([^;]*\)\.(then|catch)/);
   assert.match(page, /bundleName: context\.applicationInfo\.name/);
   assert.match(page, /desktopTrayAction: 'open'/);
+  assert.match(page, /Text\('TunnelArk'\)/);
+  assert.match(page, /Button\('打开 TunnelArk'\)/);
   assert.doesNotMatch(page, /io\.github\.tailscaleohos/);
   assert.doesNotMatch(trayServiceSource + page, /BackgroundTasksKit|LocationKit|Pip|PictureInPicture/i);
 

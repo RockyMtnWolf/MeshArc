@@ -20,6 +20,26 @@ export interface ReleaseChangelogDefinition {
 
 export const RELEASE_CHANGELOG_ENTRIES: ReleaseChangelogDefinition[] = [
   {
+    versionName: '1.1.3',
+    versionCode: 100000008,
+    releaseDateZh: '2026年10月16日',
+    releaseDateEn: 'October 16, 2026',
+    changesZh: [
+      '修复“允许全部本机 TCP 入站”确认弹窗被重复触发的问题',
+      '修复离开共存设置页后，过期的确认弹窗仍可能应用入站策略的问题',
+      '修复 TCP 入站开关的显示状态与待确认策略不同步的问题',
+      '应用更名为隧舟 TunnelArk，使用全新设计的舟与隧道图标；包名与既有数据保持兼容',
+      'TCP 入站策略不再依赖共存 SOCKS 开关，系统 VPN 模式也可独立批准转发'
+    ],
+    changesEn: [
+      'Prevent duplicate confirmation dialogs for allowing all local TCP inbound traffic',
+      'Ignore stale inbound-policy confirmations after leaving the coexistence settings page',
+      'Keep the TCP inbound toggle synchronized with the policy awaiting confirmation',
+      'Rename MeshArc to TunnelArk with a newly designed boat-and-tunnel icon, retaining bundle identity and existing data',
+      'Allow independent Tailnet TCP forwarding approval in system VPN mode as well as userspace mode'
+    ]
+  },
+  {
     versionName: '1.1.2',
     versionCode: 100000007,
     releaseDateZh: '2026年10月14日',

@@ -1,4 +1,13 @@
-# MeshArc changelog
+# TunnelArk changelog
+
+## 1.1.3 (100000008) · October 16, 2026
+
+- Prevent duplicate confirmation dialogs for allowing all local TCP inbound traffic.
+- Ignore stale inbound-policy confirmations after leaving the coexistence settings page.
+- Keep the TCP inbound toggle synchronized with the policy awaiting confirmation.
+- Rename the app from MeshArc to TunnelArk while retaining its technical identifiers and existing data.
+- Use a freshly created TunnelArk boat-and-tunnel icon and rename the GitHub repository to TunnelArk.
+- Support the Tailnet-to-loopback TCP approval policy independently of SOCKS, including system VPN mode.
 
 ## 1.1.0 (100000003) · September 23, 2026
 

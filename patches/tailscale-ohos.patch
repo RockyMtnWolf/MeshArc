@@ -368,7 +368,7 @@ index bd09607..d6e6b8c 100644
  // whether they're loopback addresses. If there are no regular addresses
  // it will return any IPv4 linklocal or IPv6 unique local addresses because we
 diff --git a/tsnet/tsnet.go b/tsnet/tsnet.go
-index 65367f2..3c7b497 100644
+index 65367f2..be5d582 100644
 --- a/tsnet/tsnet.go
 +++ b/tsnet/tsnet.go
 @@ -26,9 +26,11 @@
@@ -391,7 +391,7 @@ index 65367f2..3c7b497 100644
  	"tailscale.com/net/tsdial"
  	"tailscale.com/tsd"
  	"tailscale.com/types/bools"
-@@ -64,6 +67,25 @@
+@@ -64,6 +67,26 @@
  //
  // Its exported fields may be changed until the first method call.
  type Server struct {
@@ -407,7 +407,8 @@ index 65367f2..3c7b497 100644
 +	// this: ordinary system dials to Tailscale IPs would otherwise bypass the
 +	// VPN and time out, while control and DERP sockets must still use the
 +	// physical system network.
-+	UseNetstackForPeerDial bool
++	UseNetstackForPeerDial  bool
++	ShouldInterceptLocalTCP func(src, dst netip.AddrPort, initialSYN bool) bool
 +
 +	// taildriveFS is the in-process WebDAV filesystem exposed to clients of
 +	// this tsnet server. It is created during start so LocalBackend can attach
@@ -417,7 +418,7 @@ index 65367f2..3c7b497 100644
  	// Dir specifies the name of the directory to use for
  	// state. If empty, a directory is selected automatically
  	// under os.UserConfigDir (https://golang.org/pkg/os/#UserConfigDir).
-@@ -219,6 +241,46 @@ func (s *Server) HTTPClient() *http.Client {
+@@ -219,6 +242,46 @@ func (s *Server) HTTPClient() *http.Client {
  	}
  }
  
@@ -464,7 +465,7 @@ index 65367f2..3c7b497 100644
  // LocalClient returns a LocalClient that speaks to s.
  //
  // It will start the server if it has not been started yet. If the server's
-@@ -230,6 +292,60 @@ func (s *Server) LocalClient() (*local.Client, error) {
+@@ -230,6 +293,60 @@ func (s *Server) LocalClient() (*local.Client, error) {
  	return s.localClient, nil
  }
  
@@ -525,7 +526,7 @@ index 65367f2..3c7b497 100644
  // Loopback starts a routing server on a loopback address.
  //
  // The server has multiple functions.
-@@ -427,6 +543,10 @@ func (s *Server) Close() error {
+@@ -427,6 +544,10 @@ func (s *Server) Close() error {
  	if s.localAPIListener != nil {
  		s.localAPIListener.Close()
  	}
@@ -536,7 +537,7 @@ index 65367f2..3c7b497 100644
  	if s.loopbackListener != nil {
  		s.loopbackListener.Close()
  	}
-@@ -570,7 +690,11 @@ func (s *Server) start() (reterr error) {
+@@ -570,7 +691,11 @@ func (s *Server) start() (reterr error) {
  	closePool.add(s.netMon)
  
  	s.dialer = &tsdial.Dialer{Logf: tsLogf} // mutated below (before used)
@@ -548,7 +549,7 @@ index 65367f2..3c7b497 100644
  		EventBus:      sys.Bus.Get(),
  		ListenPort:    s.Port,
  		NetMon:        s.netMon,
-@@ -579,6 +703,7 @@ func (s *Server) start() (reterr error) {
+@@ -579,6 +704,7 @@ func (s *Server) start() (reterr error) {
  		ControlKnobs:  sys.ControlKnobs(),
  		HealthTracker: sys.HealthTracker(),
  		Metrics:       sys.UserMetricsRegistry(),
@@ -556,7 +557,7 @@ index 65367f2..3c7b497 100644
  	})
  	if err != nil {
  		return err
-@@ -587,21 +712,26 @@ func (s *Server) start() (reterr error) {
+@@ -587,21 +713,27 @@ func (s *Server) start() (reterr error) {
  	sys.Set(eng)
  	sys.HealthTracker().SetMetricsRegistry(sys.UserMetricsRegistry())
  
@@ -572,6 +573,7 @@ index 65367f2..3c7b497 100644
 +	ns.ProcessLocalIPs = !externalTun
 +	ns.ProcessSubnets = !externalTun
  	ns.GetTCPHandlerForFlow = s.getTCPHandlerForFlow
++	ns.ShouldInterceptLocalTCP = s.ShouldInterceptLocalTCP
  	ns.GetUDPHandlerForFlow = s.getUDPHandlerForFlow
  	s.netstack = ns
 -	s.dialer.UseNetstackForIP = func(ip netip.Addr) bool {
@@ -589,7 +591,7 @@ index 65367f2..3c7b497 100644
  	}
  	s.dialer.NetstackDialTCP = func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
  		// Note: don't just return ns.DialContextTCP or we'll return
-@@ -609,6 +739,9 @@ func (s *Server) start() (reterr error) {
+@@ -609,6 +741,9 @@ func (s *Server) start() (reterr error) {
  		// callers.
  		v4, v6 := s.TailscaleIPs()
  		src := bools.IfElse(dst.Addr().Is6(), v6, v4)
@@ -600,10 +602,20 @@ index 65367f2..3c7b497 100644
  		if err != nil {
  			return nil, err
 diff --git a/wgengine/netstack/netstack.go b/wgengine/netstack/netstack.go
-index d97c669..6b7248f 100644
+index d97c669..1b26a6a 100644
 --- a/wgengine/netstack/netstack.go
 +++ b/wgengine/netstack/netstack.go
-@@ -228,6 +228,12 @@ type Impl struct {
+@@ -167,7 +167,8 @@ type Impl struct {
+ 	// ProcessLocalIPs is whether netstack should handle incoming
+ 	// traffic directed at the Node.Addresses (local IPs).
+ 	// It can only be set before calling Start.
+-	ProcessLocalIPs bool
++	ProcessLocalIPs         bool
++	ShouldInterceptLocalTCP func(src, dst netip.AddrPort, initialSYN bool) bool
+ 
+ 	// ProcessSubnets is whether netstack should handle incoming
+ 	// traffic destined to non-local IPs (i.e. whether it should
+@@ -228,6 +229,12 @@ type Impl struct {
  	// global limit, preventing a misbehaving client from starving the
  	// global limit.
  	connsInFlightByClient map[netip.Addr]int
@@ -616,7 +628,7 @@ index d97c669..6b7248f 100644
  	// packetsInFlight tracks whether we're already handling a packet by
  	// the given endpoint ID; clients can send repeated SYN packets while
  	// trying to establish a connection (and while we're dialing the
-@@ -390,6 +396,8 @@ func Create(logf logger.Logf, tundev *tstun.Wrapper, e wgengine.Engine, mc *magi
+@@ -390,6 +397,8 @@ func Create(logf logger.Logf, tundev *tstun.Wrapper, e wgengine.Engine, mc *magi
  		dialer:                dialer,
  		connsOpenBySubnetIP:   make(map[netip.Addr]int),
  		connsInFlightByClient: make(map[netip.Addr]int),
@@ -625,7 +637,7 @@ index d97c669..6b7248f 100644
  		packetsInFlight:       make(map[stack.TransportEndpointID]struct{}),
  		dns:                   dns,
  	}
-@@ -870,6 +878,89 @@ func (ns *Impl) DialContextTCPWithBind(ctx context.Context, localAddr netip.Addr
+@@ -870,6 +879,89 @@ func (ns *Impl) DialContextTCPWithBind(ctx context.Context, localAddr netip.Addr
  	return gonet.DialTCPWithBind(ctx, ns.ipstack, localAddress, remoteAddress, ipType)
  }
  
@@ -715,21 +727,71 @@ index d97c669..6b7248f 100644
  func (ns *Impl) DialContextUDP(ctx context.Context, ipp netip.AddrPort) (*gonet.UDPConn, error) {
  	remoteAddress := &tcpip.FullAddress{
  		NIC:  nicID,
-@@ -1052,6 +1143,9 @@ func (ns *Impl) shouldProcessInbound(p *packet.Parsed, t *tstun.Wrapper) bool {
+@@ -1052,6 +1144,13 @@ func (ns *Impl) shouldProcessInbound(p *packet.Parsed, t *tstun.Wrapper) bool {
  	dstIP := p.Dst.Addr()
  	isLocal := ns.isLocalIP(dstIP)
  	isService := ns.isVIPServiceIP(dstIP)
 +	if p.IPProto == ipproto.TCP && isLocal && ns.isDialedTCPPort(p.Dst) {
 +		return true
 +	}
++	if p.IPProto == ipproto.TCP && isLocal && ns.ShouldInterceptLocalTCP != nil &&
++		ns.ShouldInterceptLocalTCP(p.Src, p.Dst, p.TCPFlags&packet.TCPSynAck == packet.TCPSyn) {
++		return true
++	}
  
  	// Handle TCP connection to the Tailscale IP(s) in some cases:
  	if ns.lb != nil && p.IPProto == ipproto.TCP && isLocal {
 diff --git a/wgengine/netstack/netstack_test.go b/wgengine/netstack/netstack_test.go
-index 584b3ba..f6f053d 100644
+index 584b3ba..2d18ed5 100644
 --- a/wgengine/netstack/netstack_test.go
 +++ b/wgengine/netstack/netstack_test.go
-@@ -513,6 +513,39 @@ func tcp4syn(tb testing.TB, src, dst netip.Addr, sport, dport uint16) []byte {
+@@ -274,6 +274,45 @@ func looksLikeATailscaleSelfAddress(addr netip.Addr) bool {
+ 		addr.Is6() && tsaddr.Tailscale4To6Range().Contains(addr)
+ }
+ 
++func TestLocalTCPInterceptionPreservesSystemTunTraffic(t *testing.T) {
++	self := netip.MustParseAddr("100.96.96.103")
++	peer := netip.MustParseAddrPort("100.64.0.20:50000")
++	for _, scenario := range []struct {
++		name        string
++		protocol    ipproto.Proto
++		destination netip.AddrPort
++		flags       packet.TCPFlag
++		intercept   bool
++		called      bool
++		initialSYN  bool
++	}{
++		{"approved-syn", ipproto.TCP, netip.AddrPortFrom(self, 3240), packet.TCPSyn, true, true, true},
++		{"outbound-reply", ipproto.TCP, netip.AddrPortFrom(self, 50001), packet.TCPSynAck, false, true, false},
++		{"untracked-ack", ipproto.TCP, netip.AddrPortFrom(self, 3240), packet.TCPAck, false, true, false},
++		{"udp", ipproto.UDP, netip.AddrPortFrom(self, 3240), 0, false, false, false},
++		{"icmp", ipproto.ICMPv4, netip.AddrPortFrom(self, 0), 0, false, false, false},
++		{"subnet", ipproto.TCP, netip.MustParseAddrPort("192.168.20.1:3240"), packet.TCPSyn, false, false, false},
++	} {
++		t.Run(scenario.name, func(t *testing.T) {
++			impl := &Impl{}
++			impl.atomicIsLocalIPFunc.Store(func(address netip.Addr) bool { return address == self })
++			impl.atomicIsVIPServiceIPFunc.Store(func(netip.Addr) bool { return false })
++			called := false
++			impl.ShouldInterceptLocalTCP = func(source, destination netip.AddrPort, initialSYN bool) bool {
++				called = true
++				if source != peer || destination != scenario.destination || initialSYN != scenario.initialSYN {
++					t.Fatal("incorrect TCP flow passed to interception policy")
++				}
++				return scenario.intercept
++			}
++			parsed := &packet.Parsed{IPProto: scenario.protocol, Src: peer, Dst: scenario.destination, TCPFlags: scenario.flags}
++			if got := impl.shouldProcessInbound(parsed, nil); got != scenario.intercept || called != scenario.called {
++				t.Fatalf("intercept=%v called=%v, expected %v %v", got, called, scenario.intercept, scenario.called)
++			}
++		})
++	}
++}
++
+ func TestShouldProcessInbound(t *testing.T) {
+ 	testCases := []struct {
+ 		name        string
+@@ -513,6 +552,39 @@ func tcp4syn(tb testing.TB, src, dst netip.Addr, sport, dport uint16) []byte {
  	return ip
  }
  

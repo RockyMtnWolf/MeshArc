@@ -4,7 +4,7 @@ Documentation, translations, device testing and code contributions are welcome.
 
 ## Report a problem
 
-Search [existing issues](https://github.com/RockyMtnWolf/MeshArc/issues) first, then include:
+Search [existing issues](https://github.com/RockyMtnWolf/TunnelArk/issues) first, then include:
 
 - App version and installation source.
 - Device model and HarmonyOS version.

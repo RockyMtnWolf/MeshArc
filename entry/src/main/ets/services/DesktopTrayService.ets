@@ -68,14 +68,14 @@ export class DesktopTrayService {
         quickOperation: {
           abilityName: 'MeshArcStatusBarAbility',
           moduleName: 'entry',
-          title: 'MeshArc',
+          title: 'TunnelArk',
           height: 120
         },
         statusBarGroupMenu: [[{
-          title: '打开 MeshArc',
+          title: '打开 TunnelArk',
           menuAction: { abilityName: 'EntryAbility', moduleName: 'entry' }
         }]],
-        hoverTips: 'MeshArc'
+        hoverTips: 'TunnelArk'
       };
       statusBarManager.addToStatusBar(context, item);
       this.whiteIcon = whiteIcon;

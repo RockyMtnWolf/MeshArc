@@ -25,10 +25,10 @@ struct StatusBarPage {
 
   build() {
     Column({ space: 16 }) {
-      Text('MeshArc')
+      Text('TunnelArk')
         .fontSize(18)
         .fontWeight(600)
-      Button('打开 MeshArc')
+      Button('打开 TunnelArk')
         .onClick(() => this.openApplication())
     }
     .width('100%')

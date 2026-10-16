@@ -1,12 +1,14 @@
 import nativeBridge from 'libtailscale_ohos.so';
 import { common } from '@kit.AbilityKit';
-import { pasteboard } from '@kit.BasicServicesKit';
+import { deviceInfo, pasteboard, settings } from '@kit.BasicServicesKit';
 import { ClashConfigRepairGateway } from '../services/ClashConfigRepairGateway';
 import { sharedVpnBackgroundTask } from '../services/BackgroundKeepaliveController';
 import { awaitVpnOperation } from '../services/VpnCommandGateway';
+import { InboundTCPGateway } from '../services/InboundTCPGateway';
 
 interface CoexistenceStatus {
   active: boolean;
+  inboundTCPAvailable: boolean;
   address: string;
   error: string;
   inboundTCPPorts: number[];
@@ -22,18 +24,39 @@ export struct ClashCoexistenceSettings {
   @State private busy: boolean = false;
   @State private message: string = '';
   @State private inboundTCPEnabled: boolean = false;
+  @State private inboundTCPAvailable: boolean = false;
   @State private inboundTCPPorts: number[] = [];
   @State private inboundTCPAllowAll: boolean = false;
   @State private inboundTCPPortDrafts: string[] = [];
   @State private inboundTCPPortDraftIds: string[] = [];
   private timer: number = -1;
   private generation: number = 0;
+  private lifecycleGeneration: number = 0;
   private refreshInFlight: boolean = false;
+  private allowAllConfirmationPending: boolean = false;
+  private inboundTCPStatusLoaded: boolean = false;
+  private inboundTCPHydrating: boolean = false;
   private inboundPortsDraftDirty: boolean = false;
   private nextInboundPortDraftId: number = 1;
 
+  private openAppSystemSettings(): void {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    if (deviceInfo.sdkApiVersion >= 26 && canIUse('SystemCapability.Applications.Settings.Core')) {
+      try {
+        settings.openAppDetailSettingsPage(context, context.abilityInfo.bundleName);
+        return;
+      } catch (_error) {
+        this.message = '无法打开系统应用详情，请手动进入系统设置中的应用管理。';
+        return;
+      }
+    }
+    this.message = '请手动进入系统设置中的应用管理，打开本应用详情页。应用内入站批准与系统入站授权独立；服务应用仍需在系统设置允许入站连接。';
+  }
+
   aboutToAppear(): void {
     this.busy = false;
+    this.inboundTCPStatusLoaded = false;
+    this.lifecycleGeneration++;
     this.generation++;
     void this.refresh();
     this.timer = setInterval(() => { if (!this.busy) { void this.refresh(); } }, 3000);
@@ -41,6 +64,8 @@ export struct ClashCoexistenceSettings {
 
   aboutToDisappear(): void {
     this.generation++;
+    this.lifecycleGeneration++;
+    this.allowAllConfirmationPending = false;
     clearInterval(this.timer);
     this.timer = -1;
   }
@@ -52,8 +77,9 @@ export struct ClashCoexistenceSettings {
     this.refreshInFlight = true;
     const generation: number = this.generation;
     try {
-      const state: CoexistenceStatus = await this.readStatus(await awaitVpnOperation(
-        nativeBridge.coexistenceStatusAsync(), 'SOCKS status'));
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const result = await new InboundTCPGateway(context).readStatus();
+      const state: CoexistenceStatus = this.readStatus(result.raw);
       if (generation === this.generation) {
         this.applyStatus(state);
         if (state.error.length > 0) this.message = state.error;
@@ -79,7 +105,7 @@ export struct ClashCoexistenceSettings {
         'SOCKS control', 15000));
       this.applyStatus(state);
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      await sharedVpnBackgroundTask.setUserspaceActive(context, state.active);
+      await sharedVpnBackgroundTask.setUserspaceActive(context, state.active || state.inboundTCPEnabled);
       if (generation === this.generation) {
         this.message = state.error.length > 0 ? state.error :
           (state.active ? '本地 SOCKS 已监听；尚需合并 ClashBox 规则并验证流量。' : '用户态 SOCKS 已停止，未停止 ClashBox。');
@@ -97,7 +123,8 @@ export struct ClashCoexistenceSettings {
 
   private readStatus(raw: string): CoexistenceStatus {
     const state: CoexistenceStatus = JSON.parse(raw) as CoexistenceStatus;
-    if (typeof state.active !== 'boolean' || typeof state.address !== 'string' ||
+    if (typeof state.active !== 'boolean' || typeof state.inboundTCPAvailable !== 'boolean' ||
+      typeof state.address !== 'string' ||
       typeof state.error !== 'string' || typeof state.inboundTCPEnabled !== 'boolean' ||
       typeof state.inboundTCPAllowAll !== 'boolean' ||
       !Array.isArray(state.inboundTCPPorts)) {
@@ -112,7 +139,9 @@ export struct ClashCoexistenceSettings {
   }
 
   private applyStatus(state: CoexistenceStatus, forceDraftSync: boolean = false): void {
+    this.inboundTCPHydrating = true;
     this.active = state.active;
+    this.inboundTCPAvailable = state.inboundTCPAvailable;
     this.inboundTCPEnabled = state.inboundTCPEnabled;
     this.inboundTCPPorts = state.inboundTCPPorts;
     this.inboundTCPAllowAll = state.inboundTCPAllowAll;
@@ -120,6 +149,8 @@ export struct ClashCoexistenceSettings {
       this.syncInboundPortDrafts(state.inboundTCPPorts);
     }
     AppStorage.setOrCreate('clashUserspaceActive', state.active);
+    this.inboundTCPStatusLoaded = true;
+    this.inboundTCPHydrating = false;
   }
 
   private syncInboundPortDrafts(ports: number[]): void {
@@ -152,7 +183,7 @@ export struct ClashCoexistenceSettings {
   }
 
   private confirmApplyInboundTCPPorts(): void {
-    if (this.busy || !this.active) return;
+    if (this.busy || !this.inboundTCPAvailable) return;
     let ports: number[] = [];
     try {
       ports = this.parseInboundTCPPorts();
@@ -174,26 +205,37 @@ export struct ClashCoexistenceSettings {
   }
 
   private confirmAllowAllInboundTCP(): void {
-    if (this.busy || !this.active) return;
+    if (this.busy || !this.inboundTCPAvailable || this.allowAllConfirmationPending || this.inboundTCPAllowAll) return;
+    this.allowAllConfirmationPending = true;
+    const lifecycleGeneration: number = this.lifecycleGeneration;
     this.getUIContext().showAlertDialog({
       title: '确认允许全部本机 TCP 入站？',
       message: '高风险：允许 Tailnet 中已通过 ACL 的设备连接本机所有 TCP 服务端口，并转发到本机 loopback。请确保本机服务已做认证与访问控制。此策略不对公网暴露；本应用内部 SOCKS 127.0.0.1:1055 不作为入站服务开放。此操作不会自动启用，需再次确认。',
-      primaryButton: { value: '允许全部 TCP 入站', action: () =>
-        this.setInboundTCPPolicy(true, this.inboundTCPPorts) },
-      secondaryButton: { value: '取消', action: () => {} }
+      primaryButton: { value: '允许全部 TCP 入站', action: () => {
+        if (lifecycleGeneration !== this.lifecycleGeneration || !this.allowAllConfirmationPending) return;
+        this.allowAllConfirmationPending = false;
+        void this.setInboundTCPPolicy(true, this.inboundTCPPorts);
+      } },
+      secondaryButton: { value: '取消', action: () => {
+        if (lifecycleGeneration !== this.lifecycleGeneration) return;
+        this.allowAllConfirmationPending = false;
+        this.inboundTCPAllowAll = false;
+      } }
     });
   }
 
   private async setInboundTCPPolicy(allowAll: boolean, ports: number[], forceDraftSync: boolean = false): Promise<void> {
-    if (this.busy || !this.active) return;
+    if (this.busy || !this.inboundTCPAvailable) return;
     this.busy = true;
     const generation: number = ++this.generation;
     try {
-      const state: CoexistenceStatus = this.readStatus(await awaitVpnOperation(
-        nativeBridge.coexistenceSetInboundTCPPolicyAsync(JSON.stringify({ allowAll: allowAll, ports: ports })),
-        'inbound TCP policy', 15000));
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const result = await new InboundTCPGateway(context).setPolicy(allowAll, ports);
+      const state: CoexistenceStatus = this.readStatus(result.raw);
       if (generation === this.generation) {
         this.applyStatus(state, forceDraftSync);
+        await sharedVpnBackgroundTask.setUserspaceActive(context,
+          result.userspace && (state.active || state.inboundTCPEnabled));
         this.message = state.error.length > 0 ? state.error :
           (state.inboundTCPAllowAll ? '已启用全部 TCP 入站策略。' :
             (state.inboundTCPEnabled ? `已应用端口列表：${state.inboundTCPPorts.join(', ')}` :
@@ -214,7 +256,7 @@ export struct ClashCoexistenceSettings {
   }
 
   private addInboundPortDraft(): void {
-    if (this.busy || !this.active || this.inboundTCPAllowAll) return;
+    if (this.busy || !this.inboundTCPAvailable || this.inboundTCPAllowAll) return;
     const drafts: string[] = this.inboundTCPPortDrafts.slice();
     drafts.push('');
     const ids: string[] = this.inboundTCPPortDraftIds.slice();
@@ -225,7 +267,7 @@ export struct ClashCoexistenceSettings {
   }
 
   private removeInboundPortDraft(index: number): void {
-    if (this.busy || !this.active || this.inboundTCPAllowAll) return;
+    if (this.busy || !this.inboundTCPAvailable || this.inboundTCPAllowAll) return;
     const drafts: string[] = [];
     const ids: string[] = [];
     for (let draftIndex: number = 0; draftIndex < this.inboundTCPPortDrafts.length; draftIndex++) {
@@ -280,37 +322,49 @@ export struct ClashCoexistenceSettings {
             .fontColor($r('sys.color.font_secondary'))
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
         Toggle({ type: ToggleType.Switch, isOn: this.inboundTCPAllowAll })
-          .id('clash-inbound-tcp-allow-all').enabled(!this.busy && this.active)
-          .onChange((enabled: boolean) => enabled ? this.confirmAllowAllInboundTCP() :
-            this.setInboundTCPPolicy(false, this.inboundTCPPorts))
+          .id('clash-inbound-tcp-allow-all').enabled(!this.busy && this.inboundTCPAvailable)
+          .onChange((enabled: boolean) => {
+            if (!this.inboundTCPStatusLoaded || this.inboundTCPHydrating ||
+              enabled === this.inboundTCPAllowAll || this.allowAllConfirmationPending) return;
+            if (enabled) {
+              this.confirmAllowAllInboundTCP();
+            } else {
+              void this.setInboundTCPPolicy(false, this.inboundTCPPorts);
+            }
+          })
       }
-      Text(this.active ? (this.inboundTCPAllowAll ?
+      Text(this.inboundTCPAvailable ? (this.inboundTCPAllowAll ?
         `全部模式已启用。保留的端口列表：${this.inboundTCPPorts.join(', ') || '空'}。` :
         (this.inboundTCPEnabled ?
           `列表模式已启用：${this.inboundTCPPorts.join(', ')} → 本机 loopback。` :
           '入站关闭。编辑并应用端口列表以启用；示例：3240。')) :
-        '共存关闭时入站策略不可用；启用后仍受 Tailnet ACL 限制，并仅转发到本机 loopback。')
+        '入站桥接不可用；启动用户态 SOCKS 或系统 VPN 后重试。策略仍受 Tailnet ACL 限制，并仅转发到本机 loopback。')
         .id('clash-inbound-tcp-info').fontSize(12).fontColor($r('sys.color.font_secondary'))
+      Text('应用内批准与系统入站授权独立；服务应用仍需在系统设置允许入站连接。')
+        .id('clash-inbound-system-authorization-note').fontSize(12)
+        .fontColor($r('sys.color.font_secondary'))
+      Button('打开本应用系统设置').id('clash-open-app-system-settings')
+        .onClick(() => this.openAppSystemSettings())
       if (!this.inboundTCPAllowAll) {
         ForEach(this.inboundTCPPortDrafts, (port: string, index: number) => {
           Row({ space: 8 }) {
             TextInput({ text: port, placeholder: 'TCP 端口，例如 3240' })
-              .id(this.inboundTCPPortDraftIds[index]).enabled(!this.busy && this.active)
+              .id(this.inboundTCPPortDraftIds[index]).enabled(!this.busy && this.inboundTCPAvailable)
               .type(InputType.Number)
               .onChange((value: string) => this.updateInboundPortDraft(index, value))
               .layoutWeight(1).padding(10)
               .backgroundColor($r('sys.color.comp_background_primary')).borderRadius(10)
             Button('删除').id(`${this.inboundTCPPortDraftIds[index]}-remove`)
-              .enabled(!this.busy && this.active)
+              .enabled(!this.busy && this.inboundTCPAvailable)
               .onClick(() => this.removeInboundPortDraft(index))
           }
           .width('100%')
         }, (_port: string, index: number) => this.inboundTCPPortDraftIds[index])
         Row({ space: 8 }) {
           Button('添加端口').id('clash-inbound-tcp-add')
-            .enabled(!this.busy && this.active).onClick(() => this.addInboundPortDraft())
+            .enabled(!this.busy && this.inboundTCPAvailable).onClick(() => this.addInboundPortDraft())
           Button('应用列表').id('clash-inbound-tcp-apply')
-            .enabled(!this.busy && this.active)
+            .enabled(!this.busy && this.inboundTCPAvailable)
             .onClick(() => this.confirmApplyInboundTCPPorts())
         }.width('100%').justifyContent(FlexAlign.SpaceBetween)
       }

@@ -15,6 +15,15 @@ import {
 import { ControlServerConfig, ControlServerSettings } from '../services/ControlServerConfig';
 import { DeviceNameService } from '../services/DeviceNameService';
 import { VpnNetworkMonitor } from '../services/VpnNetworkMonitor';
+import {
+  INBOUND_TCP_OWNER_FILE,
+  INBOUND_TCP_REQUEST_FILE,
+  INBOUND_TCP_RESPONSE_FILE,
+  InboundTCPRpcProtocol,
+  InboundTCPRpcRequest,
+  InboundTCPRpcResponse,
+  InboundTCPOwnerSession
+} from '../services/InboundTCPGateway';
 
 const DOMAIN = 0x0000;
 const TAG = 'TailscaleVpn';
@@ -308,6 +317,12 @@ export default class TailscaleVpnExtensionAbility extends VpnExtensionAbility {
   private statusTimer: number = -1;
   private taildropRequestTimer: number = -1;
   private taildropIncomingTimer: number = -1;
+  private inboundTCPRequestTimer: number = -1;
+  private inboundTCPRequestInFlight: boolean = false;
+  private inboundTCPOwnerSession: string = '';
+  private inboundTCPOwnerCreatedAtMs: number = 0;
+  private lastInboundTCPHeartbeatMs: number = 0;
+  private inboundTCPRpcProtocol?: InboundTCPRpcProtocol;
   private statusUpdateInFlight: boolean = false;
   private taildropIncomingSnapshotInFlight: boolean = false;
   private currentVisibleStatus: string = 'VPN extension lifecycle entered';
@@ -337,6 +352,25 @@ export default class TailscaleVpnExtensionAbility extends VpnExtensionAbility {
   };
 
   onCreate(want: Want): void {
+    this.inboundTCPOwnerSession = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    this.inboundTCPOwnerCreatedAtMs = Date.now();
+    this.lastInboundTCPHeartbeatMs = this.inboundTCPOwnerCreatedAtMs;
+    this.inboundTCPRpcProtocol = new InboundTCPRpcProtocol(this.inboundTCPOwnerSession);
+    this.writeAtomicTextFile(`${this.context.filesDir}/${INBOUND_TCP_REQUEST_FILE}`, '');
+    this.writeAtomicTextFile(`${this.context.filesDir}/${INBOUND_TCP_RESPONSE_FILE}`, '');
+    this.writeInboundTCPOwnerSession(true);
+    this.inboundTCPRequestTimer = setInterval(() => {
+      if (this.destroying) {
+        return;
+      }
+      const now: number = Date.now();
+      if (now - this.lastInboundTCPHeartbeatMs >= 1000) {
+        this.lastInboundTCPHeartbeatMs = now;
+        this.writeCurrentStatusHeartbeat();
+        this.writeInboundTCPOwnerSession(true);
+      }
+      this.processInboundTCPRequest();
+    }, 250);
     this.recordDiagnosticEvent('vpn_extension_created', 'lifecycle');
     this.writePeerSnapshot([], emptyMeshArcReceiverStatus());
     this.cleanupStaleTaildropOutbox();
@@ -1908,7 +1942,119 @@ export default class TailscaleVpnExtensionAbility extends VpnExtensionAbility {
 
   private writeCurrentStatusHeartbeat(): void {
     this.writeAtomicTextFile(`${this.context.filesDir}/vpn-probe-status.txt`,
-      `${this.currentVisibleStatus} | heartbeatMs=${Date.now()}`);
+      `${this.currentVisibleStatus} | tun=${this.tunFd >= 0} | heartbeatMs=${Date.now()}`);
+  }
+
+  private writeInboundTCPOwnerSession(valid: boolean): void {
+    const owner: InboundTCPOwnerSession = {
+      ownerSession: this.inboundTCPOwnerSession,
+      createdAtMs: this.inboundTCPOwnerCreatedAtMs,
+      heartbeatMs: Date.now(),
+      tun: this.tunFd >= 0,
+      valid: valid
+    };
+    this.writeAtomicTextFile(`${this.context.filesDir}/${INBOUND_TCP_OWNER_FILE}`, JSON.stringify(owner));
+  }
+
+  private processInboundTCPRequest(): void {
+    if (this.destroying || this.inboundTCPRequestInFlight || this.inboundTCPRpcProtocol === undefined ||
+      !this.isCurrentInboundTCPOwner()) {
+      return;
+    }
+    const requestPath: string = `${this.context.filesDir}/${INBOUND_TCP_REQUEST_FILE}`;
+    const responsePath: string = `${this.context.filesDir}/${INBOUND_TCP_RESPONSE_FILE}`;
+    let requestText: string = '';
+    try {
+      if (!fileIo.accessSync(requestPath)) {
+        return;
+      }
+      requestText = fileIo.readTextSync(requestPath).trim();
+    } catch (_error) {
+      return;
+    }
+    if (requestText.length === 0) {
+      return;
+    }
+    const protocol = this.inboundTCPRpcProtocol;
+    const decision = protocol.evaluate(requestText, this.inboundTCPOwnerSession, Date.now());
+    if (decision.kind === 'duplicate' && decision.response !== undefined) {
+      this.writeAtomicTextFile(responsePath, JSON.stringify(decision.response));
+      this.clearInboundTCPRequestIfMatches(requestPath, decision.request);
+      return;
+    }
+    if (decision.kind === 'expired' && decision.request !== undefined) {
+      const response: InboundTCPRpcResponse = {
+        ownerSession: this.inboundTCPOwnerSession,
+        requestId: decision.request.requestId,
+        result: '',
+        error: '入站策略请求已过期。'
+      };
+      this.writeAtomicTextFile(responsePath, JSON.stringify(response));
+      this.clearInboundTCPRequestIfMatches(requestPath, decision.request);
+      return;
+    }
+    if (decision.kind !== 'process' || decision.request === undefined) {
+      this.writeAtomicTextFile(requestPath, '');
+      return;
+    }
+    this.inboundTCPRequestInFlight = true;
+    this.executeInboundTCPRequest(decision.request, requestPath, responsePath)
+      .finally(() => {
+        this.inboundTCPRequestInFlight = false;
+      });
+  }
+
+  private async executeInboundTCPRequest(request: InboundTCPRpcRequest, requestPath: string,
+    responsePath: string): Promise<void> {
+    let result: string = '';
+    let errorMessage: string = '';
+    try {
+      if (this.destroying || request.ownerSession !== this.inboundTCPOwnerSession ||
+        request.expiresAtMs <= Date.now()) {
+        errorMessage = '入站策略请求已过期。';
+      } else if (request.operation === 'status') {
+        result = await nativeBridge.coexistenceStatusAsync();
+      } else {
+        result = await nativeBridge.coexistenceSetInboundTCPPolicyAsync(request.payload);
+      }
+    } catch (_error) {
+      errorMessage = '系统 VPN 入站策略操作失败。';
+    }
+    if (this.destroying || request.ownerSession !== this.inboundTCPOwnerSession ||
+      !this.isCurrentInboundTCPOwner()) {
+      return;
+    }
+    const response: InboundTCPRpcResponse | undefined = this.inboundTCPRpcProtocol?.complete(
+      request, result, errorMessage);
+    if (response !== undefined) {
+      this.writeAtomicTextFile(responsePath, JSON.stringify(response));
+    }
+    this.clearInboundTCPRequestIfMatches(requestPath, request);
+  }
+
+  private clearInboundTCPRequestIfMatches(requestPath: string, request?: InboundTCPRpcRequest): void {
+    if (request === undefined) {
+      return;
+    }
+    try {
+      const current: InboundTCPRpcRequest = JSON.parse(fileIo.readTextSync(requestPath)) as InboundTCPRpcRequest;
+      if (current.ownerSession === request.ownerSession && current.requestId === request.requestId) {
+        this.writeAtomicTextFile(requestPath, '');
+      }
+    } catch (_error) {
+      this.writeAtomicTextFile(requestPath, '');
+    }
+  }
+
+  private isCurrentInboundTCPOwner(): boolean {
+    try {
+      const ownerPath: string = `${this.context.filesDir}/${INBOUND_TCP_OWNER_FILE}`;
+      const owner: InboundTCPOwnerSession =
+        JSON.parse(fileIo.readTextSync(ownerPath)) as InboundTCPOwnerSession;
+      return owner.valid && owner.ownerSession === this.inboundTCPOwnerSession;
+    } catch (_error) {
+      return false;
+    }
   }
 
   private writeTextFile(path: string, content: string): boolean {
@@ -1954,6 +2100,10 @@ export default class TailscaleVpnExtensionAbility extends VpnExtensionAbility {
 
   onDestroy(): void {
     this.destroying = true;
+    if (this.inboundTCPRequestTimer >= 0) {
+      clearInterval(this.inboundTCPRequestTimer);
+      this.inboundTCPRequestTimer = -1;
+    }
     this.networkMonitor.stop();
     this.recordDiagnosticEvent('vpn_extension_destroyed', 'lifecycle');
     this.stopBackendStopWatcher();
@@ -1993,6 +2143,15 @@ export default class TailscaleVpnExtensionAbility extends VpnExtensionAbility {
       transfer: finalTransfer
     });
     this.writeStatus('VPN extension destroyed');
+    try {
+      const ownerPath: string = `${this.context.filesDir}/${INBOUND_TCP_OWNER_FILE}`;
+      const currentOwner: InboundTCPOwnerSession =
+        JSON.parse(fileIo.readTextSync(ownerPath)) as InboundTCPOwnerSession;
+      if (currentOwner.ownerSession === this.inboundTCPOwnerSession) {
+        this.writeInboundTCPOwnerSession(false);
+      }
+    } catch (_error) {
+    }
     if (connection !== undefined) {
       try {
         const destroyPromise: Promise<void> = connection.destroy();

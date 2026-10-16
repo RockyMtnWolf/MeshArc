@@ -906,19 +906,19 @@
     },
     {
       "name": "module_desc",
-      "value": "MeshArc for HarmonyOS NEXT"
+      "value": "TunnelArk for HarmonyOS NEXT"
     },
     {
       "name": "entryability_desc",
-      "value": "MeshArc main ability"
+      "value": "TunnelArk main ability"
     },
     {
       "name": "entryability_label",
-      "value": "MeshArc"
+      "value": "TunnelArk"
     },
     {
       "name": "app_title",
-      "value": "MeshArc"
+      "value": "TunnelArk"
     },
     {
       "name": "app_tagline",
@@ -990,11 +990,11 @@
     },
     {
       "name": "transfer_remote_cached_title",
-      "value": "MeshArc is not connected"
+      "value": "TunnelArk is not connected"
     },
     {
       "name": "transfer_remote_cached_description",
-      "value": "Cached remote devices stay visible; MeshArc is only needed when you send"
+      "value": "Cached remote devices stay visible; TunnelArk is only needed when you send"
     },
     {
       "name": "transfer_remote_devices_title",
@@ -1002,11 +1002,11 @@
     },
     {
       "name": "transfer_remote_devices_description",
-      "value": "Cached from MeshArc; try LocalSend directly when you send"
+      "value": "Cached from TunnelArk; try LocalSend directly when you send"
     },
     {
       "name": "transfer_remote_cached_badge",
-      "value": "MeshArc"
+      "value": "TunnelArk"
     },
     {
       "name": "transfer_remote_localsend_port",
@@ -1494,7 +1494,7 @@
     },
     {
       "name": "diagnostic_quick_transfer_option_description",
-      "value": "Inspect LocalSend, the MeshArc receiver, media discovery, and the HosPlayer parameter contract"
+      "value": "Inspect LocalSend, the TunnelArk receiver, media discovery, and the HosPlayer parameter contract"
     },
     {
       "name": "diagnostic_service_monitoring_option_title",
@@ -1526,7 +1526,7 @@
     },
     {
       "name": "diagnostic_mesharc_receiver_status_title",
-      "value": "MeshArc receiver"
+      "value": "TunnelArk receiver"
     },
     {
       "name": "diagnostic_hosplayer_status_title",
@@ -2318,11 +2318,11 @@
     },
     {
       "name": "native_settings_profile_default",
-      "value": "MeshArc"
+      "value": "TunnelArk"
     },
     {
       "name": "native_settings_vip",
-      "value": "MeshArc VIP"
+      "value": "TunnelArk VIP"
     },
     {
       "name": "native_settings_vip_action",
@@ -2558,7 +2558,7 @@
     },
     {
       "name": "security_app_authentication_title",
-      "value": "Unlock MeshArc"
+      "value": "Unlock TunnelArk"
     },
     {
       "name": "security_folder_authentication_title",

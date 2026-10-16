@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,23 +30,25 @@ var coexistenceMu sync.Mutex
 var localTCPServiceBridge = tcpServiceBridge{sessions: make(map[*tcpBridgeSession]struct{})}
 
 type coexistenceStatus struct {
-	Active             bool     `json:"active"`
-	Address            string   `json:"address"`
-	Error              string   `json:"error"`
-	InboundTCPPorts    []uint16 `json:"inboundTCPPorts"`
-	InboundTCPEnabled  bool     `json:"inboundTCPEnabled"`
-	InboundTCPAllowAll bool     `json:"inboundTCPAllowAll"`
+	Active              bool     `json:"active"`
+	Address             string   `json:"address"`
+	Error               string   `json:"error"`
+	InboundTCPPorts     []uint16 `json:"inboundTCPPorts"`
+	InboundTCPEnabled   bool     `json:"inboundTCPEnabled"`
+	InboundTCPAllowAll  bool     `json:"inboundTCPAllowAll"`
+	InboundTCPAvailable bool     `json:"inboundTCPAvailable"`
 }
 
 func proxyStatus(failure string) string {
 	ports, bridgeActive, allowAll := localTCPServiceBridge.status()
 	encoded, _ := json.Marshal(coexistenceStatus{
-		Active:             clashProxy.Active(),
-		Address:            "127.0.0.1:1055",
-		Error:              failure,
-		InboundTCPPorts:    ports,
-		InboundTCPEnabled:  bridgeActive,
-		InboundTCPAllowAll: allowAll,
+		Active:              clashProxy.Active(),
+		Address:             "127.0.0.1:1055",
+		Error:               failure,
+		InboundTCPPorts:     ports,
+		InboundTCPEnabled:   bridgeActive,
+		InboundTCPAllowAll:  allowAll,
+		InboundTCPAvailable: localTCPServiceBridge.available(),
 	})
 	return string(encoded)
 }
@@ -57,7 +60,14 @@ type tcpServiceBridge struct {
 	ports      map[uint16]struct{}
 	allowAll   bool
 	unregister func()
+	policyPath string
+	flows      map[tcpBridgeFlow]time.Time
 	sessions   map[*tcpBridgeSession]struct{}
+}
+
+type tcpBridgeFlow struct {
+	source      netip.AddrPort
+	destination netip.AddrPort
 }
 
 type tcpBridgeSession struct {
@@ -67,6 +77,7 @@ type tcpBridgeSession struct {
 	client  net.Conn
 	service net.Conn
 	once    sync.Once
+	flow    tcpBridgeFlow
 }
 
 func parseInboundTCPPorts(encoded string) (map[uint16]struct{}, error) {
@@ -138,6 +149,20 @@ func (bridge *tcpServiceBridge) enable(server *tsnet.Server) {
 	}
 	bridge.server = server
 	bridge.active = true
+	bridge.ports = nil
+	bridge.allowAll = false
+	bridge.flows = make(map[tcpBridgeFlow]time.Time)
+	if bridge.sessions == nil {
+		bridge.sessions = make(map[*tcpBridgeSession]struct{})
+	}
+	if bridge.policyPath != "" {
+		if encoded, err := os.ReadFile(bridge.policyPath); err == nil {
+			if allowAll, ports, err := parseInboundTCPPolicy(string(encoded)); err == nil {
+				bridge.allowAll = allowAll
+				bridge.ports = ports
+			}
+		}
+	}
 	bridge.mu.Unlock()
 	remove := server.RegisterFallbackTCPHandler(bridge.handleFlow)
 	bridge.mu.Lock()
@@ -156,12 +181,38 @@ func (bridge *tcpServiceBridge) setPorts(ports map[uint16]struct{}) error {
 
 func (bridge *tcpServiceBridge) setPolicy(allowAll bool, ports map[uint16]struct{}) error {
 	bridge.mu.Lock()
-	if !bridge.active || bridge.server == nil || !clashProxy.Active() {
+	if !bridge.active || bridge.server == nil {
 		bridge.mu.Unlock()
-		return fmt.Errorf("coexistence SOCKS mode must be active before enabling inbound TCP bridges")
+		return fmt.Errorf("the Tailscale backend must be ready before configuring inbound TCP")
+	}
+	if bridge.policyPath != "" {
+		selected := make([]uint16, 0, len(ports))
+		for port := range ports {
+			selected = append(selected, port)
+		}
+		sort.Slice(selected, func(left, right int) bool { return selected[left] < selected[right] })
+		encoded, err := json.Marshal(struct {
+			AllowAll bool     `json:"allowAll"`
+			Ports    []uint16 `json:"ports"`
+		}{allowAll, selected})
+		if err == nil {
+			err = os.WriteFile(bridge.policyPath+".tmp", encoded, 0600)
+		}
+		if err == nil {
+			err = os.Rename(bridge.policyPath+".tmp", bridge.policyPath)
+		}
+		if err != nil {
+			bridge.mu.Unlock()
+			return fmt.Errorf("could not save inbound TCP policy: %w", err)
+		}
 	}
 	bridge.ports = ports
 	bridge.allowAll = allowAll
+	for flow := range bridge.flows {
+		if !bridge.allowsPortLocked(flow.destination.Port()) {
+			delete(bridge.flows, flow)
+		}
+	}
 	revoked := make([]*tcpBridgeSession, 0)
 	for session := range bridge.sessions {
 		if !bridge.allowsPortLocked(session.port) {
@@ -176,7 +227,7 @@ func (bridge *tcpServiceBridge) setPolicy(allowAll bool, ports map[uint16]struct
 }
 
 func (bridge *tcpServiceBridge) allowsPortLocked(port uint16) bool {
-	if port == 1055 {
+	if port == 0 || port == 1055 {
 		return false
 	}
 	if bridge.allowAll {
@@ -184,6 +235,57 @@ func (bridge *tcpServiceBridge) allowsPortLocked(port uint16) bool {
 	}
 	_, ok := bridge.ports[port]
 	return ok
+}
+
+func (bridge *tcpServiceBridge) available() bool {
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	return bridge.active && bridge.server != nil
+}
+
+func (bridge *tcpServiceBridge) interceptServerTCP(server *tsnet.Server, source, destination netip.AddrPort, initialSYN bool) bool {
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	if bridge.server != server {
+		return false
+	}
+	return bridge.interceptTCPLocked(source, destination, initialSYN)
+}
+
+func (bridge *tcpServiceBridge) interceptTCP(source, destination netip.AddrPort, initialSYN bool) bool {
+	bridge.mu.Lock()
+	defer bridge.mu.Unlock()
+	return bridge.interceptTCPLocked(source, destination, initialSYN)
+}
+
+func (bridge *tcpServiceBridge) interceptTCPLocked(source, destination netip.AddrPort, initialSYN bool) bool {
+	if !bridge.active || !bridge.allowsPortLocked(destination.Port()) {
+		return false
+	}
+	now := time.Now()
+	flow := tcpBridgeFlow{source, destination}
+	if expiry, ok := bridge.flows[flow]; ok {
+		if expiry.IsZero() || now.Before(expiry) {
+			return true
+		}
+		delete(bridge.flows, flow)
+	}
+	if !initialSYN {
+		return false
+	}
+	for key, expiry := range bridge.flows {
+		if !expiry.IsZero() && !now.Before(expiry) {
+			delete(bridge.flows, key)
+		}
+	}
+	if len(bridge.flows) >= 512 {
+		return false
+	}
+	if bridge.flows == nil {
+		bridge.flows = make(map[tcpBridgeFlow]time.Time)
+	}
+	bridge.flows[flow] = now.Add(30 * time.Second)
+	return true
 }
 
 func (bridge *tcpServiceBridge) status() ([]uint16, bool, bool) {
@@ -197,7 +299,7 @@ func (bridge *tcpServiceBridge) status() ([]uint16, bool, bool) {
 	return ports, bridge.active && (bridge.allowAll || len(ports) != 0), bridge.allowAll
 }
 
-func (bridge *tcpServiceBridge) handleFlow(_, destination netip.AddrPort) (func(net.Conn), bool) {
+func (bridge *tcpServiceBridge) handleFlow(source, destination netip.AddrPort) (func(net.Conn), bool) {
 	bridge.mu.Lock()
 	server := bridge.server
 	portAllowed := bridge.allowsPortLocked(destination.Port())
@@ -211,7 +313,7 @@ func (bridge *tcpServiceBridge) handleFlow(_, destination netip.AddrPort) (func(
 		return nil, false
 	}
 	return func(client net.Conn) {
-		session := &tcpBridgeSession{client: client, port: destination.Port()}
+		session := &tcpBridgeSession{client: client, port: destination.Port(), flow: tcpBridgeFlow{source, destination}}
 		bridge.mu.Lock()
 		if !bridge.active || bridge.server != server {
 			bridge.mu.Unlock()
@@ -224,6 +326,10 @@ func (bridge *tcpServiceBridge) handleFlow(_, destination netip.AddrPort) (func(
 			return
 		}
 		bridge.sessions[session] = struct{}{}
+		if bridge.flows == nil {
+			bridge.flows = make(map[tcpBridgeFlow]time.Time)
+		}
+		bridge.flows[session.flow] = time.Time{}
 		bridge.mu.Unlock()
 		go bridge.serve(session, destination.Port())
 	}, true
@@ -234,6 +340,7 @@ func (bridge *tcpServiceBridge) serve(session *tcpBridgeSession, port uint16) {
 		session.close()
 		bridge.mu.Lock()
 		delete(bridge.sessions, session)
+		delete(bridge.flows, session.flow)
 		bridge.mu.Unlock()
 	}()
 
@@ -293,6 +400,7 @@ func (bridge *tcpServiceBridge) disable() {
 	bridge.server = nil
 	bridge.ports = nil
 	bridge.allowAll = false
+	bridge.flows = nil
 	remove := bridge.unregister
 	bridge.unregister = nil
 	sessions := make([]*tcpBridgeSession, 0, len(bridge.sessions))
@@ -357,7 +465,9 @@ func TSCoexistenceStart() *C.char {
 
 //export TSCoexistenceStop
 func TSCoexistenceStop() *C.char {
-	stopCoexistence()
+	coexistenceMu.Lock()
+	clashProxy.Stop()
+	coexistenceMu.Unlock()
 	return C.CString(proxyStatus(""))
 }
 

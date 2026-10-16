@@ -222,10 +222,10 @@
     { "name": "transfer_clearing_cache", "value": "正在清除收到的文件缓存" },
     { "name": "transfer_cache_cleared", "value": "收到的文件缓存已清除" },
     { "name": "transfer_clear_cache_failed", "value": "未能清除全部收到的文件缓存，请重试" },
-    { "name": "module_desc", "value": "MeshArc for HarmonyOS NEXT" },
-    { "name": "entryability_desc", "value": "MeshArc 鸿蒙主程序" },
-    { "name": "entryability_label", "value": "MeshArc" },
-    { "name": "app_title", "value": "MeshArc" },
+    { "name": "module_desc", "value": "隧舟 TunnelArk for HarmonyOS NEXT" },
+    { "name": "entryability_desc", "value": "隧舟 TunnelArk 鸿蒙主程序" },
+    { "name": "entryability_label", "value": "隧舟 TunnelArk" },
+    { "name": "app_title", "value": "隧舟 TunnelArk" },
     { "name": "app_tagline", "value": "安全连接你的设备" },
     { "name": "tab_home", "value": "设备" },
     { "name": "tab_transfer", "value": "传输" },
@@ -243,11 +243,11 @@
     { "name": "transfer_connected_description", "value": "向在线设备发送文件，并保存本机收到的文件" },
     { "name": "transfer_connect_first_title", "value": "请先连接 Tailscale" },
     { "name": "transfer_connect_first_description", "value": "连接 Tailscale 后才能发送与接收；已有的收到文件和传输记录仍可在下方查看" },
-    { "name": "transfer_remote_cached_title", "value": "MeshArc 尚未连接" },
+    { "name": "transfer_remote_cached_title", "value": "隧舟 TunnelArk 尚未连接" },
     { "name": "transfer_remote_cached_description", "value": "已缓存的远程设备仍会显示，发送时再按需恢复连接" },
     { "name": "transfer_remote_devices_title", "value": "远程设备" },
-    { "name": "transfer_remote_devices_description", "value": "来自 MeshArc 的设备缓存；发送时优先尝试 LocalSend" },
-    { "name": "transfer_remote_cached_badge", "value": "MeshArc" },
+    { "name": "transfer_remote_devices_description", "value": "来自隧舟 TunnelArk 的设备缓存；发送时优先尝试 LocalSend" },
+    { "name": "transfer_remote_cached_badge", "value": "隧舟 TunnelArk" },
     { "name": "transfer_remote_localsend_port", "value": "LocalSend · 端口 %d" },
     { "name": "transfer_remote_port_label", "value": "端口 %d" },
     { "name": "transfer_remote_port_action", "value": "指定端口" },
@@ -368,7 +368,7 @@
     { "name": "diagnostic_feature_options_description", "value": "选择要在工程诊断页和脱敏报告中显示的模块；开关变化和自检结果会写入结构化事件与 HiLog" },
     { "name": "diagnostic_enabled_modules_title", "value": "已启用模块" },
     { "name": "diagnostic_quick_transfer_option_title", "value": "捷传与 HosPlayer 联动" },
-    { "name": "diagnostic_quick_transfer_option_description", "value": "查看 LocalSend、MeshArc 接收端、媒体服务识别和 HosPlayer 参数协议状态" },
+    { "name": "diagnostic_quick_transfer_option_description", "value": "查看 LocalSend、隧舟 TunnelArk 接收端、媒体服务识别和 HosPlayer 参数协议状态" },
     { "name": "diagnostic_service_monitoring_option_title", "value": "服务在线状态监测" },
     { "name": "diagnostic_service_monitoring_option_description", "value": "查看轮询、捷传、媒体、Sunshine 与 Taildrop 的在线状态汇总" },
     { "name": "diagnostic_security_option_title", "value": "应用锁与安全文件夹" },
@@ -376,7 +376,7 @@
     { "name": "diagnostic_appearance_option_title", "value": "外观与布局" },
     { "name": "diagnostic_appearance_option_description", "value": "查看背景、沉浸取色、流光等级、主页布局和导航配置摘要" },
     { "name": "diagnostic_localsend_status_title", "value": "LocalSend / 捷传" },
-    { "name": "diagnostic_mesharc_receiver_status_title", "value": "MeshArc 接收端" },
+    { "name": "diagnostic_mesharc_receiver_status_title", "value": "隧舟 TunnelArk 接收端" },
     { "name": "diagnostic_hosplayer_status_title", "value": "媒体与 HosPlayer" },
     { "name": "diagnostic_service_monitoring_title", "value": "服务在线状态监测" },
     { "name": "diagnostic_service_monitoring_description", "value": "显示脱敏后的在线数量、探测进度与后台轮询状态；状态变化会写入日志" },
@@ -569,8 +569,8 @@
     ,{ "name": "settings_about_help_title", "value": "\u5173\u4e8e\u4e0e\u5e2e\u52a9" }
     ,{ "name": "settings_animation_summary", "value": "\u65f6\u957f\u3001\u5e45\u5ea6\u4e0e\u5f39\u6027\u54cd\u5e94" }
     ,{ "name": "native_settings_title", "value": "\u8bbe\u7f6e" }
-    ,{ "name": "native_settings_profile_default", "value": "MeshArc" }
-    ,{ "name": "native_settings_vip", "value": "MeshArc VIP" }
+    ,{ "name": "native_settings_profile_default", "value": "隧舟 TunnelArk" }
+    ,{ "name": "native_settings_vip", "value": "隧舟 TunnelArk VIP" }
     ,{ "name": "native_settings_vip_action", "value": "\u89e3\u9501\u66f4\u591a\u80fd\u529b" }
     ,{ "name": "native_settings_system_follow", "value": "\u8ddf\u968f\u7cfb\u7edf" }
     ,{ "name": "native_settings_transfer_section", "value": "\u4e92\u4f20\u4e0e\u7a7a\u95f4" }
@@ -639,7 +639,7 @@
     ,{ "name": "security_folder_lock_description", "value": "\u53ef\u9501\u5b9a\u9009\u5b9a\u8bbe\u5907\u6587\u4ef6\u5939\u53ca\u5176\u5185\u5bb9" }
     ,{ "name": "security_lock_folder_action", "value": "\u9501\u5b9a\u6587\u4ef6\u5939" }
     ,{ "name": "security_unlock_folder_action", "value": "\u89e3\u9664\u6587\u4ef6\u5939\u9501\u5b9a" }
-    ,{ "name": "security_app_authentication_title", "value": "\u89e3\u9501 MeshArc" }
+    ,{ "name": "security_app_authentication_title", "value": "\u89e3\u9501 隧舟 TunnelArk" }
     ,{ "name": "security_folder_authentication_title", "value": "\u89e3\u9501\u53d7\u4fdd\u62a4\u6587\u4ef6\u5939" }
     ,{ "name": "security_app_locked_title", "value": "\u5e94\u7528\u5df2\u9501\u5b9a" }
     ,{ "name": "security_app_locked_description", "value": "\u8bf7\u4f7f\u7528\u8bbe\u5907\u8eab\u4efd\u9a8c\u8bc1\u540e\u7ee7\u7eed" }

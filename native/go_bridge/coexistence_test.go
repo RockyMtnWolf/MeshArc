@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
 	"io"
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -92,8 +92,20 @@ func TestTCPServiceBridgeRelaysAndClosesBothDirections(t *testing.T) {
 	}()
 
 	client, peer := net.Pipe()
-	session := &tcpBridgeSession{client: client}
-	bridge := tcpServiceBridge{sessions: map[*tcpBridgeSession]struct{}{session: {}}}
+	flow := tcpBridgeFlow{
+		source:      netip.MustParseAddrPort("100.64.0.2:40000"),
+		destination: netip.MustParseAddrPort("100.64.0.1:3240"),
+	}
+	session := &tcpBridgeSession{client: client, port: 3240, flow: flow}
+	bridge := tcpServiceBridge{
+		active:   true,
+		allowAll: true,
+		flows:    map[tcpBridgeFlow]time.Time{flow: {}},
+		sessions: map[*tcpBridgeSession]struct{}{session: {}},
+	}
+	if !bridge.interceptTCP(flow.source, flow.destination, false) {
+		t.Fatal("established session flow was not retained")
+	}
 	go bridge.serve(session, uint16(port))
 	if _, err := peer.Write([]byte("hello")); err != nil {
 		t.Fatal(err)
@@ -110,6 +122,12 @@ func TestTCPServiceBridgeRelaysAndClosesBothDirections(t *testing.T) {
 		remaining := len(bridge.sessions)
 		bridge.mu.Unlock()
 		if remaining == 0 {
+			bridge.mu.Lock()
+			_, flowRemaining := bridge.flows[flow]
+			bridge.mu.Unlock()
+			if flowRemaining {
+				t.Fatal("established flow remained tracked after its session ended")
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -144,12 +162,6 @@ func TestTCPServiceBridgeDisableClosesTrackedConnections(t *testing.T) {
 }
 
 func TestInboundTCPPolicyNarrowingClosesRevokedSessions(t *testing.T) {
-	if err := clashProxy.Start("127.0.0.1:0", func(context.Context, string, string) (net.Conn, error) {
-		return nil, net.ErrClosed
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defer clashProxy.Stop()
 	client, clientPeer := net.Pipe()
 	defer clientPeer.Close()
 	session := &tcpBridgeSession{client: client, port: 3389}

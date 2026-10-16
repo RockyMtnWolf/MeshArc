@@ -427,6 +427,9 @@ func (b *backendController) startWithDevice(stateDir, deviceModel, controlURL st
 		Logf:                   b.backendLogf,
 		UseNetstackForPeerDial: device != nil,
 	}
+	server.ShouldInterceptLocalTCP = func(source, destination netip.AddrPort, initialSYN bool) bool {
+		return localTCPServiceBridge.interceptServerTCP(server, source, destination, initialSYN)
+	}
 	// Assigning a nil *harmonyTunDevice directly to the tun.Device interface
 	// creates a non-nil interface containing a nil pointer. wireguard-go then
 	// starts its reader and calls Read on that nil receiver. Leave the interface
@@ -2669,11 +2672,15 @@ func (b *backendController) startAsync(
 	b.setPhase("restoring-preferences")
 	restoreBackendPreferences(startContext, client, stateDir)
 
+	coexistenceMu.Lock()
+	defer coexistenceMu.Unlock()
 	b.mu.Lock()
 	if b.server != server || b.generation != generation || startContext.Err() != nil {
 		b.mu.Unlock()
 		return
 	}
+	localTCPServiceBridge.policyPath = filepath.Join(stateDir, "inbound-tcp-policy.json")
+	localTCPServiceBridge.enable(server)
 	b.starting = false
 	b.cancelStart = nil
 	b.phase = "ready"

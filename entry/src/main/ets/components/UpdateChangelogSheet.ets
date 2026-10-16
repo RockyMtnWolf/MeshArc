@@ -27,7 +27,7 @@ export interface UpdateChangelogEntry {
 @Component
 export struct UpdateChangelogSheet {
   @Prop entries: UpdateChangelogEntry[] = [];
-  @Prop appName: string = 'MeshArc';
+  @Prop appName: string = 'TunnelArk';
   @Prop materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
 
   @State private selectedIndex: number = 0;
